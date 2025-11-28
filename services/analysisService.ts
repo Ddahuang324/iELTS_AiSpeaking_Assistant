@@ -10,7 +10,7 @@ export const MOCK_SAMPLE_RESULT: AnalysisResult = {
   lexicalScore: 4.5,
   grammarScore: 4.0,
   pronunciationScore: 4.0,
-  
+
   speechMetrics: {
     prosodyScore: 45,
     pronunciationScore: 50,
@@ -112,7 +112,7 @@ const ANALYSIS_SCHEMA = {
     lexicalScore: { type: Type.NUMBER, description: "Lexical Resource Band 0-9" },
     grammarScore: { type: Type.NUMBER, description: "Grammar Range Band 0-9" },
     pronunciationScore: { type: Type.NUMBER, description: "Pronunciation Band 0-9" },
-    
+
     // NEW Speech Metrics
     speechMetrics: {
       type: Type.OBJECT,
@@ -184,14 +184,15 @@ const blobToBase64 = (blob: Blob): Promise<string> => {
 export const generateAnalysisReport = async (transcripts: TranscriptItem[], apiKey: string, audioBlob?: Blob | null): Promise<AnalysisResult | null> => {
   try {
     const ai = new GoogleGenAI({ apiKey });
-    
+
     // Convert transcript to string
-    const transcriptText = transcripts.map(t => 
+    const transcriptText = transcripts.map(t =>
       `${t.role === 'user' ? 'Candidate' : 'Examiner'}: ${t.text}`
     ).join('\n');
 
     const parts: any[] = [
-      { text: `Analyze the following IELTS Speaking session.
+      {
+        text: `Analyze the following IELTS Speaking session.
       
       Audio Evidence is provided. Use the audio to strictly evaluate Prosody, Pronunciation, Fluency, and Completeness.
       
@@ -210,7 +211,7 @@ export const generateAnalysisReport = async (transcripts: TranscriptItem[], apiK
       4. Identify hesitation markers (um, uh, like) and count them.
       5. List vocabulary and grammar errors with corrections.
       6. List advanced vocabulary used.
-      7. Provide 4 actionable improvements.` 
+      7. Provide 4 actionable improvements.`
       }
     ];
 
@@ -226,7 +227,7 @@ export const generateAnalysisReport = async (transcripts: TranscriptItem[], apiK
     }
 
     const response = await ai.models.generateContent({
-      model: 'gemini-1.5-flash',
+      model: 'gemini-2.0-flash-lite',
       contents: [
         {
           role: 'user',
@@ -241,7 +242,7 @@ export const generateAnalysisReport = async (transcripts: TranscriptItem[], apiK
 
     const responseText = response.text;
     if (!responseText) throw new Error("Empty response from AI");
-    
+
     const data = JSON.parse(responseText);
 
     return {

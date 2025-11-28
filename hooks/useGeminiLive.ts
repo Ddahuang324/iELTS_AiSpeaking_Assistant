@@ -18,7 +18,7 @@ export const useGeminiLive = () => {
   const [appState, setAppState] = useState<AppState>(AppState.IDLE);
   const [transcripts, setTranscripts] = useState<TranscriptItem[]>([]);
   const [volumeLevel, setVolumeLevel] = useState<number>(0);
-  
+
   // Refs for audio processing
   const audioContextRef = useRef<AudioContext | null>(null);
   const inputContextRef = useRef<AudioContext | null>(null);
@@ -27,6 +27,8 @@ export const useGeminiLive = () => {
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const nextStartTimeRef = useRef<number>(0);
   const sessionPromiseRef = useRef<Promise<any> | null>(null);
+  const sessionRef = useRef<any>(null);
+  const isConnectedRef = useRef<boolean>(false);
   const currentOutputTranscriptRef = useRef<string>('');
   const currentInputTranscriptRef = useRef<string>('');
 
@@ -57,7 +59,7 @@ export const useGeminiLive = () => {
       audioContextRef.current.close();
       audioContextRef.current = null;
     }
-    
+
     // Stop Recorder if active
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop();
@@ -70,30 +72,30 @@ export const useGeminiLive = () => {
       setTranscripts([]); // Clear previous transcripts
       audioChunksRef.current = []; // Clear previous audio
       recordedAudioBlobRef.current = null;
-      
+
       const apiKey = process.env.API_KEY;
       if (!apiKey) {
         throw new Error("API Key not found in environment variables");
       }
 
       const ai = new GoogleGenAI({ apiKey });
-      
+
       // Initialize Audio Contexts
       // Main Context for Output & Mixing (24kHz is standard output rate)
       const ctx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
       audioContextRef.current = ctx;
-      
+
       // Separate Input Context for 16kHz processing (required by Gemini Input)
       inputContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
 
       // Get User Media
-      const stream = await navigator.mediaDevices.getUserMedia({ 
+      const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           channelCount: 1,
           echoCancellation: true,
           autoGainControl: true,
           noiseSuppression: true,
-        } 
+        }
       });
       streamRef.current = stream;
 
@@ -132,30 +134,30 @@ export const useGeminiLive = () => {
             voiceConfig: { prebuiltVoiceConfig: { voiceName: voiceName } },
           },
           systemInstruction: SYSTEM_INSTRUCTION,
-          inputAudioTranscription: {}, 
-          outputAudioTranscription: {}, 
+          inputAudioTranscription: {},
+          outputAudioTranscription: {},
         },
         callbacks: {
           onopen: async () => {
             console.log("Session opened");
             setAppState(AppState.ACTIVE);
-            
+
             if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
-                await audioContextRef.current.resume();
+              await audioContextRef.current.resume();
             }
-            
+
             if (!inputContextRef.current || !streamRef.current) return;
-            
+
             // Process Mic Stream for Gemini Input (16kHz)
             const source = inputContextRef.current.createMediaStreamSource(streamRef.current);
             const processor = inputContextRef.current.createScriptProcessor(4096, 1, 1);
-            
+
             sourceRef.current = source;
             processorRef.current = processor;
 
             processor.onaudioprocess = (e) => {
               const inputData = e.inputBuffer.getChannelData(0);
-              
+
               // Volume meter
               let sum = 0;
               for (let i = 0; i < inputData.length; i++) {
@@ -167,15 +169,15 @@ export const useGeminiLive = () => {
               // Resample
               const currentSampleRate = inputContextRef.current?.sampleRate || 16000;
               let pcmData: Int16Array;
-              
+
               if (currentSampleRate !== 16000) {
-                 pcmData = resampleTo16kHZ(inputData, currentSampleRate);
+                pcmData = resampleTo16kHZ(inputData, currentSampleRate);
               } else {
-                 pcmData = float32ToInt16(inputData);
+                pcmData = float32ToInt16(inputData);
               }
-              
+
               const base64Data = bytesToBase64(new Uint8Array(pcmData.buffer));
-              
+
               sessionPromiseRef.current?.then(session => {
                 session.sendRealtimeInput({
                   media: {
@@ -190,67 +192,81 @@ export const useGeminiLive = () => {
             processor.connect(inputContextRef.current.destination);
           },
           onmessage: async (msg: LiveServerMessage) => {
-             // 1. Audio Output
-             const part = msg.serverContent?.modelTurn?.parts?.[0];
-             const audioData = part?.inlineData?.data;
+            // 1. 处理转录文本（先收集，稍后同步显示）
+            const outputTranscript = msg.serverContent?.outputTranscription?.text;
+            if (outputTranscript) {
+              currentOutputTranscriptRef.current += outputTranscript;
+            }
 
-             if (audioData && audioContextRef.current) {
-                if (currentInputTranscriptRef.current) {
-                   updateTranscript('user', currentInputTranscriptRef.current, false);
-                   currentInputTranscriptRef.current = '';
-                }
-
-                const ctx = audioContextRef.current;
-                if (ctx.state === 'suspended') await ctx.resume();
-
-                if (nextStartTimeRef.current < ctx.currentTime) {
-                    nextStartTimeRef.current = ctx.currentTime;
-                }
-
-                try {
-                  const buffer = await decodeAudioData(base64ToBytes(audioData), ctx, 24000);
-                  const source = ctx.createBufferSource();
-                  source.buffer = buffer;
-                  
-                  // Connect AI Audio to Speakers
-                  source.connect(ctx.destination);
-                  
-                  // Connect AI Audio to Recorder (if active)
-                  if (recordingDestRef.current) {
-                     source.connect(recordingDestRef.current);
-                  }
-
-                  source.start(nextStartTimeRef.current);
-                  nextStartTimeRef.current += buffer.duration;
-                } catch (e) {
-                  console.error("Audio decode error", e);
-                }
-             }
-
-             // 2. Transcriptions
-             const outputTranscript = msg.serverContent?.outputTranscription?.text;
-             if (outputTranscript) {
-                currentOutputTranscriptRef.current += outputTranscript;
-                updateTranscript('model', currentOutputTranscriptRef.current, true);
-                if (currentInputTranscriptRef.current) {
-                   updateTranscript('user', currentInputTranscriptRef.current, false);
-                   currentInputTranscriptRef.current = '';
-                }
-             }
-
-             const inputTranscript = msg.serverContent?.inputTranscription?.text;
-             if (inputTranscript) {
+            const inputTranscript = msg.serverContent?.inputTranscription?.text;
+            if (inputTranscript) {
+              // 只有在没有 AI 输出时才更新用户输入
+              if (!currentOutputTranscriptRef.current) {
                 currentInputTranscriptRef.current += inputTranscript;
                 updateTranscript('user', currentInputTranscriptRef.current, true);
-             }
+              }
+            }
 
-             // 3. Turn Complete
-             if (msg.serverContent?.turnComplete) {
-                if (currentOutputTranscriptRef.current) {
-                   updateTranscript('model', currentOutputTranscriptRef.current, false);
-                   currentOutputTranscriptRef.current = '';
+            // 2. 处理音频输出（音频播放时同步显示文本）
+            const part = msg.serverContent?.modelTurn?.parts?.[0];
+            const audioData = part?.inlineData?.data;
+
+            if (audioData && audioContextRef.current) {
+              // AI 开始说话，先完成用户输入
+              if (currentInputTranscriptRef.current) {
+                updateTranscript('user', currentInputTranscriptRef.current, false);
+                currentInputTranscriptRef.current = '';
+              }
+
+              const ctx = audioContextRef.current;
+              if (ctx.state === 'suspended') await ctx.resume();
+
+              if (nextStartTimeRef.current < ctx.currentTime) {
+                nextStartTimeRef.current = ctx.currentTime;
+              }
+
+              try {
+                const buffer = await decodeAudioData(base64ToBytes(audioData), ctx, 24000);
+                const source = ctx.createBufferSource();
+                source.buffer = buffer;
+
+                // Connect AI Audio to Speakers
+                source.connect(ctx.destination);
+
+                // Connect AI Audio to Recorder (if active)
+                if (recordingDestRef.current) {
+                  source.connect(recordingDestRef.current);
                 }
-             }
+
+                // 计算音频开始播放的延迟时间
+                const audioStartDelay = Math.max(0, (nextStartTimeRef.current - ctx.currentTime) * 1000);
+
+                // 在音频开始播放时同步显示文本
+                setTimeout(() => {
+                  if (currentOutputTranscriptRef.current) {
+                    updateTranscript('model', currentOutputTranscriptRef.current, true);
+                  }
+                }, audioStartDelay);
+
+                source.start(nextStartTimeRef.current);
+                nextStartTimeRef.current += buffer.duration;
+              } catch (e) {
+                console.error("Audio decode error", e);
+              }
+            }
+
+            // 3. Turn Complete
+            if (msg.serverContent?.turnComplete) {
+              if (currentOutputTranscriptRef.current) {
+                updateTranscript('model', currentOutputTranscriptRef.current, false);
+                currentOutputTranscriptRef.current = '';
+              }
+              // 确保用户输入也被完成
+              if (currentInputTranscriptRef.current) {
+                updateTranscript('user', currentInputTranscriptRef.current, false);
+                currentInputTranscriptRef.current = '';
+              }
+            }
           },
           onclose: () => {
             console.log("Session closed");
@@ -274,25 +290,34 @@ export const useGeminiLive = () => {
 
   const finalizeRecording = () => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-       mediaRecorderRef.current.stop();
+      mediaRecorderRef.current.stop();
     }
-    
+
     // Small delay to ensure last chunk is pushed
     setTimeout(() => {
-        if (audioChunksRef.current.length > 0) {
-            const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
-            recordedAudioBlobRef.current = blob;
-        }
+      if (audioChunksRef.current.length > 0) {
+        const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        recordedAudioBlobRef.current = blob;
+      }
     }, 100);
   };
 
   const updateTranscript = (role: 'user' | 'model', text: string, isPartial: boolean) => {
     setTranscripts(prev => {
       const last = prev[prev.length - 1];
+
+      // 如果最后一条是同角色且是部分消息，更新它
       if (last && last.role === role && last.isPartial) {
         const updated = { ...last, text, isPartial };
         return [...prev.slice(0, -1), updated];
-      } 
+      }
+
+      // 如果最后一条是同角色、同内容且都是最终消息，不重复添加
+      if (last && last.role === role && !last.isPartial && !isPartial && last.text === text) {
+        return prev;
+      }
+
+      // 忽略空的最终消息
       if (!isPartial && !text.trim()) return prev;
 
       return [...prev, {
@@ -306,17 +331,27 @@ export const useGeminiLive = () => {
   };
 
   const disconnect = useCallback(() => {
+    // 清空所有转录缓存，防止残留
+    currentOutputTranscriptRef.current = '';
+    currentInputTranscriptRef.current = '';
+
     cleanupAudio();
     finalizeRecording();
     setAppState(AppState.ENDED);
   }, [cleanupAudio]);
+
+  const clearTranscripts = useCallback(() => {
+    setTranscripts([]);
+    currentOutputTranscriptRef.current = '';
+    currentInputTranscriptRef.current = '';
+  }, []);
 
   useEffect(() => {
     return () => cleanupAudio();
   }, [cleanupAudio]);
 
   const getAudioBlob = useCallback(() => {
-     return recordedAudioBlobRef.current;
+    return recordedAudioBlobRef.current;
   }, []);
 
   return {
@@ -325,6 +360,7 @@ export const useGeminiLive = () => {
     appState,
     transcripts,
     volumeLevel,
-    getAudioBlob
+    getAudioBlob,
+    clearTranscripts
   };
 };
