@@ -1,0 +1,7 @@
+{
+  "name": "IELTS Flow - AI Speaking Examiner",
+  "description": "A high-end, immersive IELTS speaking practice application powered by Gemini Live API. Features real-time voice conversation, instant transcription, and fluid, minimalist animations.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
