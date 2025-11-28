@@ -5,8 +5,11 @@ import LeftSidebar from './components/LeftSidebar';
 import RightSidebar from './components/RightSidebar';
 import PracticeView from './components/PracticeView';
 import AnalysisView from './components/AnalysisView';
+import ApiKeyModal from './components/ApiKeyModal';
 import { AppState, VoiceName, DifficultyMode, AnalysisResult } from './types';
 import { generateAnalysisReport, MOCK_SAMPLE_RESULT } from './services/analysisService';
+import { getStoredApiKey } from './services/apiKeyService';
+import { getStoredHistory, addHistoryItem, deleteHistoryItem } from './services/historyService';
 
 const App: React.FC = () => {
   const { connect, disconnect, appState, transcripts, volumeLevel, getAudioBlob, clearTranscripts } = useGeminiLive();
@@ -15,31 +18,25 @@ const App: React.FC = () => {
   const [difficultyMode, setDifficultyMode] = useState<DifficultyMode>('beginner');
   const [showIntro, setShowIntro] = useState(true);
 
+  // API Key State
+  const [userApiKey, setUserApiKey] = useState<string>('');
+  const [isApiKeyModalOpen, setIsApiKeyModalOpen] = useState(false);
+
   // Analysis State (Lifted from AnalysisView)
   const [history, setHistory] = useState<AnalysisResult[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
-  // Load history on mount
+  // Load history and API key on mount
   useEffect(() => {
-    const saved = localStorage.getItem('ielts_history');
-    let loadedHistory: AnalysisResult[] = [];
-
-    if (saved) {
-      try {
-        loadedHistory = JSON.parse(saved);
-      } catch (e) {
-        console.error("Failed to parse history", e);
-      }
-    }
-
-    // Ensure sample is always present
-    if (!loadedHistory.find(h => h.id === MOCK_SAMPLE_RESULT.id)) {
-      loadedHistory.push(MOCK_SAMPLE_RESULT);
-    }
-
-    // Sort by date desc
-    loadedHistory.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    // Load History
+    const loadedHistory = getStoredHistory();
     setHistory(loadedHistory);
+
+    // Load API Key
+    const storedKey = getStoredApiKey();
+    if (storedKey) {
+      setUserApiKey(storedKey);
+    }
   }, []);
 
   const handleVoiceChange = (voice: VoiceName) => {
@@ -47,13 +44,19 @@ const App: React.FC = () => {
     if (appState === AppState.ACTIVE) {
       disconnect();
       setTimeout(() => {
-        connect(voice, true);
+        if (userApiKey) {
+          connect(userApiKey, voice, true);
+        }
       }, 500);
     }
   };
 
   const handleStart = () => {
-    setShowIntro(false);
+    if (!userApiKey) {
+      setIsApiKeyModalOpen(true);
+    } else {
+      setShowIntro(false);
+    }
   };
 
   const handleAnalyze = async () => {
@@ -61,17 +64,18 @@ const App: React.FC = () => {
 
     setIsAnalyzing(true);
     try {
-      const apiKey = process.env.API_KEY;
-      if (!apiKey) throw new Error("API Key missing");
+      if (!userApiKey) {
+        setIsApiKeyModalOpen(true);
+        throw new Error("API Key missing");
+      }
 
       const audioBlob = getAudioBlob();
 
-      const newResult = await generateAnalysisReport(transcripts, apiKey, audioBlob);
+      const newResult = await generateAnalysisReport(transcripts, userApiKey, audioBlob);
 
       if (newResult) {
-        const updatedHistory = [newResult, ...history];
+        const updatedHistory = addHistoryItem(newResult);
         setHistory(updatedHistory);
-        localStorage.setItem('ielts_history', JSON.stringify(updatedHistory));
         setCurrentView('analysis');
       }
     } catch (error) {
@@ -79,6 +83,18 @@ const App: React.FC = () => {
     } finally {
       setIsAnalyzing(false);
     }
+  };
+
+  const handleDeleteHistory = (id: string) => {
+    const updatedHistory = deleteHistoryItem(id);
+    setHistory(updatedHistory);
+  };
+
+  const handleApiKeySuccess = (key: string) => {
+    setUserApiKey(key);
+    // If we are on the intro screen, we can optionally auto-enter, but let's just stay there and let user click Enter Session again or just close modal.
+    // Actually, if they were trying to start, maybe we should start? 
+    // But for simplicity, just save it.
   };
 
   if (showIntro) {
@@ -94,12 +110,27 @@ const App: React.FC = () => {
           Immersive Speaking Practice
         </p>
 
-        <button
-          onClick={handleStart}
-          className="group relative px-12 py-4 overflow-hidden rounded-none border-b border-charcoal text-charcoal transition-all duration-500 hover:text-accent-teal hover:border-accent-teal animate-float-in delay-300"
-        >
-          <span className="relative text-sm font-medium tracking-widest uppercase">Enter Session</span>
-        </button>
+        <div className="flex flex-col items-center space-y-6 animate-float-in delay-300">
+          <button
+            onClick={handleStart}
+            className="group relative px-12 py-4 overflow-hidden rounded-none border-b border-charcoal text-charcoal transition-all duration-500 hover:text-accent-teal hover:border-accent-teal"
+          >
+            <span className="relative text-sm font-medium tracking-widest uppercase">Enter Session</span>
+          </button>
+
+          <button
+            onClick={() => setIsApiKeyModalOpen(true)}
+            className="text-xs text-gray-400 hover:text-accent-teal transition-colors tracking-widest uppercase"
+          >
+            {userApiKey ? 'Update API Key' : 'Set API Key'}
+          </button>
+        </div>
+
+        <ApiKeyModal
+          isOpen={isApiKeyModalOpen}
+          onClose={() => setIsApiKeyModalOpen(false)}
+          onSuccess={handleApiKeySuccess}
+        />
       </div>
     );
   }
@@ -128,6 +159,7 @@ const App: React.FC = () => {
             history={history}
             isAnalyzing={isAnalyzing}
             onAnalyze={handleAnalyze}
+            onDelete={handleDeleteHistory}
           />
         )}
       </main>
@@ -140,7 +172,7 @@ const App: React.FC = () => {
         appState={appState}
         difficultyMode={difficultyMode}
         setDifficultyMode={setDifficultyMode}
-        onStart={() => connect(selectedVoice, true)}
+        onStart={() => userApiKey && connect(userApiKey, selectedVoice, true)}
         onStop={disconnect}
         onAnalyze={handleAnalyze}
         isAnalyzing={isAnalyzing}
@@ -160,6 +192,12 @@ const App: React.FC = () => {
           </button>
         </div>
       )}
+
+      <ApiKeyModal
+        isOpen={isApiKeyModalOpen}
+        onClose={() => setIsApiKeyModalOpen(false)}
+        onSuccess={handleApiKeySuccess}
+      />
     </div>
   );
 };

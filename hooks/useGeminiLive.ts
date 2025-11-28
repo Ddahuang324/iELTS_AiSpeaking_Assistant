@@ -4,14 +4,16 @@ import { GoogleGenAI, LiveServerMessage, Modality } from '@google/genai';
 import { base64ToBytes, decodeAudioData, resampleTo16kHZ, bytesToBase64, float32ToInt16 } from '../services/audioUtils';
 import { TranscriptItem, AppState, VoiceName } from '../types';
 
-const SYSTEM_INSTRUCTION = `You are a professional, encouraging, yet neutral IELTS Speaking Examiner. 
-Conduct a simulation of the IELTS Speaking Test (Part 1, 2, and 3).
-1. Start by briefly introducing yourself and asking for the candidate's full name.
-2. Maintain the flow of a real exam. Do not break character.
-3. Keep your responses concise (spoken style) but clear.
-4. Listen carefully to the user's answers.
-5. If the user stops speaking, gently prompt them or move to the next question.
-6. Provide brief encouraging remarks but maintain examiner distance.
+const SYSTEM_INSTRUCTION = `You are a professional, encouraging, yet neutral IELTS Speaking Examiner.
+Your goal is to help the candidate practice by asking questions from IELTS Speaking Part 1, Part 2, and Part 3 in a random and dynamic manner.
+1. Do NOT follow a strict exam structure (Part 1 -> Part 2 -> Part 3). Instead, randomly select questions from any of the three parts to test the candidate's adaptability.
+2. Avoid any fixed paradigms or repetitive scripts. Be unpredictable but relevant.
+3. Start by briefly introducing yourself and asking for the candidate's name, then immediately ask a question from Part 1, Part 2, or Part 3.
+4. Keep your responses concise (spoken style) and clear.
+5. Listen carefully to the user's answers. ALWAYS provide a brief, natural transitional comment or acknowledgment of what they said (e.g., "That's interesting," "I see," "Fair enough") before asking the next question. This makes the conversation flow naturally.
+6. If they answer well, challenge them with a harder question (Part 3 style). If they struggle, switch to an easier topic (Part 1 style).
+7. If the user stops speaking, gently prompt them or move to the next question.
+8. Provide brief encouraging remarks but maintain examiner distance.
 `;
 
 // WORKLET_CODE: 音频 worklet 的字符串定义（修复可能的拼写/语法问题）
@@ -151,7 +153,7 @@ export const useGeminiLive = () => {
     }
   }, [stopAiAudio]);
 
-  const connect = useCallback(async (voiceName: VoiceName = 'Kore', userInitiated: boolean = false) => {
+  const connect = useCallback(async (apiKey: string, voiceName: VoiceName = 'Kore', userInitiated: boolean = false) => {
     // Prevent automatic (non-user-initiated) connections. Callers must pass `true`
     // when the connection is triggered by a user gesture (e.g. button click).
     if (!userInitiated) {
@@ -167,9 +169,8 @@ export const useGeminiLive = () => {
       audioChunksRef.current = []; // Clear previous audio
       recordedAudioBlobRef.current = null;
 
-      const apiKey = process.env.API_KEY;
       if (!apiKey) {
-        throw new Error("API Key not found in environment variables");
+        throw new Error("API Key is required");
       }
 
       const ai = new GoogleGenAI({ apiKey });
@@ -522,7 +523,22 @@ export const useGeminiLive = () => {
     setTranscripts([]);
     currentOutputTranscriptRef.current = '';
     currentInputTranscriptRef.current = '';
-  }, []);
+
+    // Clear any recorded audio buffers so getAudioBlob() returns null/empty
+    audioChunksRef.current = [];
+    recordedAudioBlobRef.current = null;
+
+    // If the session has already ended, reset app state to IDLE and ensure audio resources cleaned up.
+    // This makes "Clear Chat" act as a refresh after Stop Session.
+    if (appState === AppState.ENDED) {
+      try {
+        cleanupAudio();
+      } catch (e) {
+        // ignore cleanup errors
+      }
+      setAppState(AppState.IDLE);
+    }
+  }, [appState, cleanupAudio]);
 
   useEffect(() => {
     return () => cleanupAudio();

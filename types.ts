@@ -15,49 +15,114 @@ export enum AppState {
   ERROR = 'ERROR'
 }
 
-export interface AudioConfig {
-  sampleRate: number;
-}
-
 export type VoiceName = 'Puck' | 'Charon' | 'Kore' | 'Fenrir' | 'Aoede';
 
 export type DifficultyMode = 'beginner' | 'advanced';
 
-export interface CorrectionItem {
-  original: string;
-  correction: string;
-  type: string; // e.g., "Word Choice", "Grammar", "Pronunciation"
-  explanation: string;
+// --- NEW ANALYSIS TYPES (Snake Case to match AI JSON) ---
+
+export interface FeedbackPoint {
+  point: string;
+  example: string;
 }
 
-export interface SpeechMetrics {
-  prosodyScore: number;       // 0-100: Intonation, stress, rhythm
-  pronunciationScore: number; // 0-100: Phonemic accuracy
-  fluencyScore: number;       // 0-100: Speed, silence, hesitation
-  completenessScore: number;  // 0-100: Did you finish the thought?
-  feedback: string;           // Qualitative assessment of the audio
+export interface OverallFeedback {
+  strengths: FeedbackPoint[];
+  areas_for_improvement: FeedbackPoint[];
+  key_recommendations: FeedbackPoint[];
+}
+
+export interface BandScore {
+  score: number;
+  rationale: string;
+}
+
+export interface IeltsBandScores {
+  fluency_and_coherence: BandScore;
+  lexical_resource: BandScore;
+  grammatical_range_and_accuracy: BandScore;
+  pronunciation: BandScore;
+  overall: BandScore;
+}
+
+export interface GrammarError {
+  type: string;
+  original_sentence: string;
+  text: string;
+  description: string;
+  suggestions: string[];
+}
+
+export interface WordChoiceIssue {
+  type: string;
+  original_sentence: string;
+  text: string;
+  suggestion: string;
+}
+
+export interface VocabularySuggestion {
+  overused_word: string;
+  original_sentence: string;
+  suggested_rewrites: string[];
+}
+
+export interface VocabularyAssessment {
+  advanced_words_found: string[];
+  vocabulary_suggestions: VocabularySuggestion[];
+}
+
+export interface HesitationMarker {
+  marker: string;
+  count: number;
+}
+
+export interface FluencyMarkers {
+  analysis: string;
+  hesitation_markers: HesitationMarker[];
+  connectors_used: string[];
+}
+
+export interface PronunciationPattern {
+  suspected_issue: string;
+  evidence: string[];
+}
+
+export interface PronunciationAnalysis {
+  analysis: string;
+  potential_patterns: PronunciationPattern[];
+}
+
+export interface NativeAudioAnalysis {
+  intonation: {
+    score: number;
+    analysis: string;
+  };
+  tone: {
+    score: number;
+    analysis: string;
+  };
+  spoken_vocabulary: {
+    score: number;
+    analysis: string;
+  };
+  detected_errors: {
+    error: string;
+    position_context: string;
+    correction: string;
+  }[];
+  optimization_suggestions: string[];
 }
 
 export interface AnalysisResult {
-  id: string;   // Unique ID for history
-  date: string; // ISO Date string
-  overallScore: number;
-  
-  // High-level IELTS Band Scores
-  fluencyScore: number;
-  lexicalScore: number;
-  grammarScore: number;
-  pronunciationScore: number;
+  id: string;
+  date: string;
 
-  // Detailed Speech Analysis (Azure-style)
-  speechMetrics: SpeechMetrics;
-  
-  // Qualitative Flow Analysis
-  flowFeedback: string;
-
-  hesitations: { word: string; count: number }[];
-  vocabularyIssues: CorrectionItem[];
-  grammarIssues: CorrectionItem[];
-  advancedVocabulary: string[];
-  improvements: string[];
+  overall_feedback: OverallFeedback;
+  ielts_band_score: IeltsBandScores;
+  grammar_errors: GrammarError[];
+  word_choice_issues: WordChoiceIssue[];
+  vocabulary_assessment: VocabularyAssessment;
+  fluency_markers: FluencyMarkers;
+  pronunciation_analysis: PronunciationAnalysis;
+  native_audio_analysis: NativeAudioAnalysis;
 }

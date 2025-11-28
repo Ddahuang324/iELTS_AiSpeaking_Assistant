@@ -1,171 +1,267 @@
 
 import { GoogleGenAI, Type } from '@google/genai';
-import { TranscriptItem, AnalysisResult, CorrectionItem } from '../types';
+import { TranscriptItem, AnalysisResult } from '../types';
 
 export const MOCK_SAMPLE_RESULT: AnalysisResult = {
   id: 'sample-session-001',
-  date: new Date(Date.now() - 86400000 * 2).toISOString(), // 2 days ago
-  overallScore: 4.0,
-  fluencyScore: 4.0,
-  lexicalScore: 4.5,
-  grammarScore: 4.0,
-  pronunciationScore: 4.0,
-
-  speechMetrics: {
-    prosodyScore: 45,
-    pronunciationScore: 50,
-    fluencyScore: 42,
-    completenessScore: 80,
-    feedback: "The speaker tends to speak in a monotone range with limited pitch variation, which makes the delivery sound somewhat robotic. There is noticeable stress on incorrect syllables in multi-syllabic words. However, the speaker generally finishes their sentences, showing good thought completeness despite the delivery issues."
+  date: new Date(Date.now() - 86400000 * 2).toISOString(),
+  overall_feedback: {
+    strengths: [
+      { point: "词汇量较丰富", example: "You used words like 'landscape' and 'unique' correctly." }
+    ],
+    areas_for_improvement: [
+      { point: "流利度有待提高", example: "There were many 'um's and 'uh's in your speech." }
+    ],
+    key_recommendations: [
+      { point: "减少犹豫词的使用", example: "Try to pause silently instead of saying 'um'." }
+    ]
   },
-
-  flowFeedback: "There is a significant reliance on filler words like 'um' and 'uh' to buy thinking time, which disrupts the natural rhythm of speech. The speaker often pauses in the middle of phrases rather than at natural clause boundaries, indicating a struggle to access vocabulary quickly.",
-
-  hesitations: [
-    { word: "um", count: 15 },
-    { word: "uh", count: 12 },
-    { word: "like", count: 7 },
-    { word: "the", count: 7 },
-    { word: "and", count: 7 },
-    { word: "you", count: 7 },
-    { word: "it", count: 7 },
-    { word: "is", count: 7 },
-    { word: "a", count: 7 },
-    { word: "my", count: 7 },
-    { word: "to", count: 7 },
-    { word: "of", count: 7 },
-    { word: "what", count: 4 },
-    { word: "her", count: 2 },
-    { word: "because", count: 3 },
-    { word: "but", count: 2 },
-    { word: "i", count: 7 },
-    { word: "me", count: 3 },
-    { word: "was", count: 4 },
-    { word: "has", count: 2 },
-    { word: "very", count: 3 },
-    { word: "now", count: 2 },
-    { word: "come", count: 3 },
-    { word: "talk", count: 2 },
-    { word: "who", count: 2 },
-    { word: "based", count: 2 }
-  ],
-  vocabularyIssues: [
+  ielts_band_score: {
+    fluency_and_coherence: { score: 5.0, rationale: "频繁的犹豫标记影响了连贯性。" },
+    lexical_resource: { score: 6.0, rationale: "词汇量尚可，但有一些搭配错误。" },
+    grammatical_range_and_accuracy: { score: 5.5, rationale: "存在一些基础语法错误，如主谓一致。" },
+    pronunciation: { score: 6.0, rationale: "整体清晰，但部分元音发音不准确。" },
+    overall: { score: 5.5, rationale: "整体表现尚可，需重点提升流利度。" }
+  },
+  grammar_errors: [
     {
-      original: "desert skin",
-      correction: "desert landscape",
-      type: "Word Choice",
-      explanation: "Original phrase 'desert skin' is unclear. 'Landscape' is the correct term for natural scenery."
-    },
-    {
-      original: "creative animals",
-      correction: "unique animals",
-      type: "Word Choice",
-      explanation: "Animals aren't typically described as 'creative' in this context. 'Unique' or 'native' fits better."
-    },
-    {
-      original: "a manaus my nose",
-      correction: "makes my nose dry",
-      type: "Unclear Phrase",
-      explanation: "This appears to be a mispronunciation or confusion. 'Makes my nose dry' fits the context of dry weather."
-    },
-    {
-      original: "felt the folding",
-      correction: "local food",
-      type: "Word Choice",
-      explanation: "Likely meant 'food'. 'Local food' is a standard collocation."
+      type: "主谓不一致",
+      original_sentence: "He go to school everyday.",
+      text: "go",
+      description: "第三人称单数主语后动词应加s",
+      suggestions: ["He goes to school everyday."]
     }
   ],
-  grammarIssues: [
+  word_choice_issues: [
     {
-      original: "the south waste of chinese",
-      correction: "in the southwest of China",
-      type: "Preposition/Article",
-      explanation: "Incorrect directional phrase. Use 'in the southwest of China'."
-    },
-    {
-      original: "a has a beautiful desert skin",
-      correction: "and it has a beautiful desert landscape",
-      type: "Subject-Verb Agreement",
-      explanation: "Missing subject 'it'. 'Skin' is incorrect contextually."
-    },
-    {
-      original: "and sometimes of a little built",
-      correction: "and sometimes there are a few buildings",
-      type: "Sentence Fragment",
-      explanation: "The sentence is incomplete and lacks a clear subject-verb structure."
+      type: "搭配错误",
+      original_sentence: "I did a mistake in the exam.",
+      text: "did a mistake",
+      suggestion: "made a mistake"
     }
   ],
-  advancedVocabulary: ["unique", "genuine", "fosters", "interactions", "enrich"],
-  improvements: [
-    "Increase fluency by reducing hesitation markers (um, uh). Practice speaking in full thoughts.",
-    "Improve lexical resource by learning topic-specific vocabulary for Geography and Culture.",
-    "Focus on Subject-Verb agreement and sentence structure reliability.",
-    "Work on pronunciation of distinct consonant clusters to avoid confusion like 'folding' vs 'food'."
-  ]
+  vocabulary_assessment: {
+    advanced_words_found: ["landscape", "unique", "perspective"],
+    vocabulary_suggestions: [
+      {
+        overused_word: "good",
+        original_sentence: "It was a very good experience.",
+        suggested_rewrites: ["It was a remarkable experience.", "It was a memorable experience."]
+      }
+    ]
+  },
+  fluency_markers: {
+    analysis: "语速适中，但在思考复杂句式时有明显停顿。",
+    hesitation_markers: [
+      { marker: "um", count: 5 },
+      { marker: "uh", count: 3 }
+    ],
+    connectors_used: ["and", "but", "so"]
+  },
+  pronunciation_analysis: {
+    analysis: "整体发音清晰，但在长单词的重音上偶尔出错。",
+    potential_patterns: [
+      { suspected_issue: "/th/ 音发成 /s/", evidence: ["think -> sink", "thought -> sought"] }
+    ]
+  },
+  native_audio_analysis: {
+    intonation: {
+      score: 65,
+      analysis: "语调较为平淡，缺乏抑扬顿挫，特别是在陈述句结尾处。"
+    },
+    tone: {
+      score: 70,
+      analysis: "语气总体友好，但有时显得不够自信，缺乏情感投入。"
+    },
+    spoken_vocabulary: {
+      score: 60,
+      analysis: "口语词汇使用一般，部分单词重音位置不准确，影响了表达的清晰度。"
+    },
+    detected_errors: [
+      {
+        error: "语调下降过快",
+        position_context: "在回答关于家庭的问题时",
+        correction: "尝试在句尾保持语调平稳或略微上扬，以表示话题未结束。"
+      }
+    ],
+    optimization_suggestions: [
+      "模仿英语母语者的语调变化，特别是强调句中的关键词。",
+      "练习使用不同的语气来表达不同的情感，如兴奋、遗憾等。",
+      "注意单词的重音，避免平铺直叙。"
+    ]
+  }
 };
 
 const ANALYSIS_SCHEMA = {
   type: Type.OBJECT,
   properties: {
-    overallScore: { type: Type.NUMBER, description: "IELTS Band Score 0-9" },
-    fluencyScore: { type: Type.NUMBER, description: "Fluency & Coherence Band 0-9" },
-    lexicalScore: { type: Type.NUMBER, description: "Lexical Resource Band 0-9" },
-    grammarScore: { type: Type.NUMBER, description: "Grammar Range Band 0-9" },
-    pronunciationScore: { type: Type.NUMBER, description: "Pronunciation Band 0-9" },
-
-    // NEW Speech Metrics
-    speechMetrics: {
+    overall_feedback: {
       type: Type.OBJECT,
       properties: {
-        prosodyScore: { type: Type.NUMBER, description: "Score 0-100 for intonation, stress, and rhythm." },
-        pronunciationScore: { type: Type.NUMBER, description: "Score 0-100 for phonemic accuracy." },
-        fluencyScore: { type: Type.NUMBER, description: "Score 0-100 for speed and silence ratios." },
-        completenessScore: { type: Type.NUMBER, description: "Score 0-100 for how complete the thoughts were." },
-        feedback: { type: Type.STRING, description: "A paragraph evaluating the speaker's intonation, accent, and naturalness based on the audio." }
+        strengths: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              point: { type: Type.STRING },
+              example: { type: Type.STRING }
+            }
+          }
+        },
+        areas_for_improvement: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              point: { type: Type.STRING },
+              example: { type: Type.STRING }
+            }
+          }
+        },
+        key_recommendations: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              point: { type: Type.STRING },
+              example: { type: Type.STRING }
+            }
+          }
+        },
       },
-      required: ["prosodyScore", "pronunciationScore", "fluencyScore", "completenessScore", "feedback"]
     },
-
-    flowFeedback: { type: Type.STRING, description: "A paragraph evaluating the speaker's hesitation patterns, use of fillers, and ability to self-correct." },
-
-    hesitations: {
+    ielts_band_score: {
+      type: Type.OBJECT,
+      properties: {
+        fluency_and_coherence: {
+          type: Type.OBJECT,
+          properties: { score: { type: Type.NUMBER }, rationale: { type: Type.STRING } },
+        },
+        lexical_resource: {
+          type: Type.OBJECT,
+          properties: { score: { type: Type.NUMBER }, rationale: { type: Type.STRING } },
+        },
+        grammatical_range_and_accuracy: {
+          type: Type.OBJECT,
+          properties: { score: { type: Type.NUMBER }, rationale: { type: Type.STRING } },
+        },
+        pronunciation: {
+          type: Type.OBJECT,
+          properties: { score: { type: Type.NUMBER }, rationale: { type: Type.STRING } },
+        },
+        overall: {
+          type: Type.OBJECT,
+          properties: { score: { type: Type.NUMBER }, rationale: { type: Type.STRING } },
+        },
+      },
+    },
+    grammar_errors: {
       type: Type.ARRAY,
       items: {
         type: Type.OBJECT,
         properties: {
-          word: { type: Type.STRING },
-          count: { type: Type.NUMBER }
-        }
-      }
-    },
-    vocabularyIssues: {
-      type: Type.ARRAY,
-      items: {
-        type: Type.OBJECT,
-        properties: {
-          original: { type: Type.STRING },
-          correction: { type: Type.STRING },
           type: { type: Type.STRING },
-          explanation: { type: Type.STRING }
-        }
-      }
+          original_sentence: { type: Type.STRING },
+          text: { type: Type.STRING },
+          description: { type: Type.STRING },
+          suggestions: { type: Type.ARRAY, items: { type: Type.STRING } },
+        },
+      },
     },
-    grammarIssues: {
+    word_choice_issues: {
       type: Type.ARRAY,
       items: {
         type: Type.OBJECT,
         properties: {
-          original: { type: Type.STRING },
-          correction: { type: Type.STRING },
           type: { type: Type.STRING },
-          explanation: { type: Type.STRING }
-        }
-      }
+          original_sentence: { type: Type.STRING },
+          text: { type: Type.STRING },
+          suggestion: { type: Type.STRING },
+        },
+      },
     },
-    advancedVocabulary: { type: Type.ARRAY, items: { type: Type.STRING } },
-    improvements: { type: Type.ARRAY, items: { type: Type.STRING } }
+    vocabulary_assessment: {
+      type: Type.OBJECT,
+      properties: {
+        advanced_words_found: { type: Type.ARRAY, items: { type: Type.STRING } },
+        vocabulary_suggestions: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              overused_word: { type: Type.STRING },
+              original_sentence: { type: Type.STRING },
+              suggested_rewrites: { type: Type.ARRAY, items: { type: Type.STRING } },
+            },
+          },
+        },
+      },
+    },
+    fluency_markers: {
+      type: Type.OBJECT,
+      properties: {
+        analysis: { type: Type.STRING },
+        hesitation_markers: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              marker: { type: Type.STRING },
+              count: { type: Type.INTEGER },
+            },
+          },
+        },
+        connectors_used: { type: Type.ARRAY, items: { type: Type.STRING } },
+      },
+    },
+    pronunciation_analysis: {
+      type: Type.OBJECT,
+      properties: {
+        analysis: { type: Type.STRING },
+        potential_patterns: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              suspected_issue: { type: Type.STRING },
+              evidence: { type: Type.ARRAY, items: { type: Type.STRING } },
+            },
+          },
+        },
+      },
+    },
+    native_audio_analysis: {
+      type: Type.OBJECT,
+      properties: {
+        intonation: {
+          type: Type.OBJECT,
+          properties: { score: { type: Type.NUMBER }, analysis: { type: Type.STRING } }
+        },
+        tone: {
+          type: Type.OBJECT,
+          properties: { score: { type: Type.NUMBER }, analysis: { type: Type.STRING } }
+        },
+        spoken_vocabulary: {
+          type: Type.OBJECT,
+          properties: { score: { type: Type.NUMBER }, analysis: { type: Type.STRING } }
+        },
+        detected_errors: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              error: { type: Type.STRING },
+              position_context: { type: Type.STRING },
+              correction: { type: Type.STRING }
+            }
+          }
+        },
+        optimization_suggestions: { type: Type.ARRAY, items: { type: Type.STRING } }
+      },
+      required: ["intonation", "tone", "spoken_vocabulary", "detected_errors", "optimization_suggestions"]
+    }
   },
-  required: ["overallScore", "fluencyScore", "lexicalScore", "grammarScore", "pronunciationScore", "speechMetrics", "flowFeedback", "hesitations", "vocabularyIssues", "grammarIssues", "advancedVocabulary", "improvements"]
+  required: ["overall_feedback", "ielts_band_score", "grammar_errors", "word_choice_issues", "vocabulary_assessment", "fluency_markers", "pronunciation_analysis", "native_audio_analysis"]
 };
 
 // Helper to convert Blob to Base64
@@ -181,6 +277,45 @@ const blobToBase64 = (blob: Blob): Promise<string> => {
   });
 };
 
+const SYSTEM_PROMPT = `
+你是专业的雅思口语考官。你的任务是分析用户的英语口语文本，并以结构化的JSON格式提供详细评估。
+你的所有分析、描述、理由和类型属性都必须使用中文。然而，所有引用的用户原文、例子以及建议修改的英文句子或短语都必须保持英文。
+严格遵守下面提供的JSON结构，不要输出JSON对象之外的任何内容。
+
+**关键指令：**
+1.  **不要总结 (NO SUMMARIES)**：请列出整个对话流程中发现的**每一个**错误。不要只给出几个代表性的例子。如果用户犯了10个语法错误，请列出全部10个。
+2.  **全面性 (COMPREHENSIVE)**：仔细检查每一句话，确保没有遗漏任何明显的语法、用词或发音问题。
+3.  **JSON格式**: 输出必须是合法的JSON格式，能够被前端直接解析。
+
+在分析时，请注意以下几点（例如，拼写错误、不合逻辑的短语）。你的分析需要考虑到这些潜在问题：
+- **停顿/重复**: 像 'um', 'uh' 或重复的单词应被视为流利度问题，并记录在'fluency_markers'中，而不是词汇错误。
+- **发音推断**: 如果转录的某个词看起来像是另一个词的可能发音错误（例如，文本中是'ship'，但语境暗示应该是'sheep'），这应作为'pronunciation_analysis'中推断潜在发音模式的依据。
+
+你的分析必须覆盖以下雅思标准：
+
+1.  **综合反馈 (Overall Feedback)**: 提供建设性的优势、待改进领域和关键建议。**每个要点都必须有从用户文本中提取的具体例子（引文）作为支撑**。
+2.  **雅思分数评估 (IELTS Band Score)**: 为流利度与连贯性、词汇资源、语法范围与准确性、发音四个维度估算分数（0-9），并为每个分数提供理由（中文）。
+3.  **语法错误 (Grammar Errors)**: 识别具体的语法错误。**必须列出对话中出现的所有语法错误，不要遗漏**。对于每个错误，提供包含错误的**原始句子**、错误的文本片段、错误描述（中文）和修正建议（英文）。
+4.  **用词问题 (Word Choice Issues)**: 识别用词不当或不自然的表达。**必须列出对话中出现的所有用词问题**。对于每个问题，提供**原始句子**、有问题的短语、更好的替代方案，并为问题指定一个具体的属性（例如：'用词不当', '搭配错误', '过于口语化', '表意不清'）。
+5.  **词汇评估 (Vocabulary Assessment)**:
+    - 列出任何正确使用的高级或习语词汇。
+    - 识别过度使用的基础词汇，并**提供使用高级词汇对原句进行改写的建议**。
+6.  **流利度标记 (Fluency Markers)**:
+    - 识别并统计犹豫标记（如 'um', 'uh', 'like'）。
+    - 列出使用的连接词。
+    - **对语速、节奏和自我修正等进行综合分析**。
+7.  **发音分析 (Pronunciation Analysis)**:
+    - 基于文本提供一个总体评价，并承认其局限性。
+    - **根据STT的可能错误，推断潜在的发音模式问题**（例如，混淆了哪些音）。
+8.  **原生音频分析 (Native Audio Analysis)**:
+    - **利用音频模型的能力**，深入分析用户的语调、语气和口语词汇使用。
+    - **语调 (Intonation)**: 评分（0-100）并分析语调的自然度、抑扬顿挫。
+    - **语气 (Tone)**: 评分（0-100）并分析语气的自信度、情感表达。
+    - **口语词汇 (Spoken Vocabulary)**: 评分（0-100）并分析单词重音、连读等口语特征。
+    - **检测到的错误 (Detected Errors)**: 指出具体的语调或发音错误，并提供发生的位置上下文（例如“在讨论...时”）。
+    - **优化建议 (Optimization Suggestions)**: 提供针对性的改进建议。
+`;
+
 export const generateAnalysisReport = async (transcripts: TranscriptItem[], apiKey: string, audioBlob?: Blob | null): Promise<AnalysisResult | null> => {
   try {
     const ai = new GoogleGenAI({ apiKey });
@@ -192,26 +327,11 @@ export const generateAnalysisReport = async (transcripts: TranscriptItem[], apiK
 
     const parts: any[] = [
       {
-        text: `Analyze the following IELTS Speaking session.
-      
-      Audio Evidence is provided. Use the audio to strictly evaluate Prosody, Pronunciation, Fluency, and Completeness.
+        text: `${SYSTEM_PROMPT}
       
       Transcript:
       ${transcriptText}
-      
-      Task:
-      1. Provide IELTS Band Scores (0-9) for the 4 criteria.
-      2. Provide detailed Speech Metrics (0-100) based on the AUDIO:
-         - Prosody: Intonation, stress, rhythm.
-         - Pronunciation: Phonemic accuracy.
-         - Fluency: Smoothness, speed, pauses.
-         - Completeness: Syntactic and semantic completeness.
-         - Feedback: Qualitative assessment of intonation and accent.
-      3. Provide a Flow Feedback summary: Evaluate hesitation markers and coherence.
-      4. Identify hesitation markers (um, uh, like) and count them.
-      5. List vocabulary and grammar errors with corrections.
-      6. List advanced vocabulary used.
-      7. Provide 4 actionable improvements.`
+      `
       }
     ];
 
@@ -236,7 +356,7 @@ export const generateAnalysisReport = async (transcripts: TranscriptItem[], apiK
       ],
       config: {
         responseMimeType: "application/json",
-        responseSchema: ANALYSIS_SCHEMA,
+        responseSchema: ANALYSIS_SCHEMA as any,
       }
     });
 
