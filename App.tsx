@@ -42,6 +42,16 @@ const App: React.FC = () => {
     setHistory(loadedHistory);
   }, []);
 
+  const handleVoiceChange = (voice: VoiceName) => {
+    setSelectedVoice(voice);
+    if (appState === AppState.ACTIVE) {
+      disconnect();
+      setTimeout(() => {
+        connect(voice);
+      }, 500);
+    }
+  };
+
   const handleStart = () => {
     connect(selectedVoice);
     setShowIntro(false);
@@ -126,7 +136,7 @@ const App: React.FC = () => {
       {/* 3. Right Sidebar: Controls & Settings */}
       <RightSidebar
         selectedVoice={selectedVoice}
-        setSelectedVoice={setSelectedVoice}
+        setSelectedVoice={handleVoiceChange}
         transcripts={transcripts}
         appState={appState}
         difficultyMode={difficultyMode}

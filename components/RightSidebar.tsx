@@ -107,8 +107,8 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
           <button
             onClick={() => setDifficultyMode('beginner')}
             className={`flex-1 py-2 rounded-md text-[10px] uppercase tracking-wider transition-all duration-300 ${difficultyMode === 'beginner'
-                ? 'bg-white text-charcoal shadow-sm'
-                : 'text-gray-500 hover:text-gray-700'
+              ? 'bg-white text-charcoal shadow-sm'
+              : 'text-gray-500 hover:text-gray-700'
               }`}
           >
             Beginner
@@ -116,8 +116,8 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
           <button
             onClick={() => setDifficultyMode('advanced')}
             className={`flex-1 py-2 rounded-md text-[10px] uppercase tracking-wider transition-all duration-300 ${difficultyMode === 'advanced'
-                ? 'bg-white text-charcoal shadow-sm'
-                : 'text-gray-500 hover:text-gray-700'
+              ? 'bg-white text-charcoal shadow-sm'
+              : 'text-gray-500 hover:text-gray-700'
               }`}
           >
             Advanced
@@ -135,7 +135,7 @@ const RightSidebar: React.FC<RightSidebarProps> = ({
           <select
             value={selectedVoice}
             onChange={(e) => setSelectedVoice(e.target.value as VoiceName)}
-            disabled={appState !== AppState.IDLE}
+            disabled={false}
             className="w-full bg-white border border-gray-200 text-charcoal text-xs uppercase tracking-wider py-3 px-4 rounded-none appearance-none focus:outline-none focus:border-accent-teal transition-colors disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
           >
             {VOICES.map((voice) => (

@@ -14,6 +14,56 @@ Conduct a simulation of the IELTS Speaking Test (Part 1, 2, and 3).
 6. Provide brief encouraging remarks but maintain examiner distance.
 `;
 
+// WORKLET_CODE: 音频 worklet 的字符串定义（修复可能的拼写/语法问题）
+const WORKLET_CODE = `
+class AudioProcessor extends AudioWorkletProcessor {
+  constructor() {
+    super();
+    // Use a fixed-size buffer to avoid garbage collection issues
+    this.buffer = new Float32Array(4096);
+    this.bufferIndex = 0;
+    this.targetSampleRate = 16000;
+    this.chunkSize = 1024; // ~64ms at 16kHz
+  }
+
+  process(inputs) {
+    const input = inputs[0];
+    if (!input || !input.length) return true;
+    const channelData = input[0];
+    
+    // Access global sampleRate explicitly
+    // @ts-ignore
+    const currentSampleRate = sampleRate;
+    const ratio = currentSampleRate / this.targetSampleRate;
+    
+    const newLength = Math.floor(channelData.length / ratio);
+    
+    for (let i = 0; i < newLength; i++) {
+      const originalIndex = i * ratio;
+      const index1 = Math.floor(originalIndex);
+      const index2 = Math.min(Math.ceil(originalIndex), channelData.length - 1);
+      const weight = originalIndex - index1;
+      const val = channelData[index1] * (1 - weight) + channelData[index2] * weight;
+      
+      // Add to buffer
+      if (this.bufferIndex < this.buffer.length) {
+        this.buffer[this.bufferIndex++] = val;
+      }
+      
+      // Send chunk when full
+      if (this.bufferIndex >= this.chunkSize) {
+        const chunk = this.buffer.slice(0, this.chunkSize);
+        this.port.postMessage(chunk);
+        this.bufferIndex = 0;
+      }
+    }
+
+    return true;
+  }
+}
+registerProcessor('audio-processor', AudioProcessor);
+`;
+
 export const useGeminiLive = () => {
   const [appState, setAppState] = useState<AppState>(AppState.IDLE);
   const [transcripts, setTranscripts] = useState<TranscriptItem[]>([]);
@@ -21,9 +71,8 @@ export const useGeminiLive = () => {
 
   // Refs for audio processing
   const audioContextRef = useRef<AudioContext | null>(null);
-  const inputContextRef = useRef<AudioContext | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const processorRef = useRef<ScriptProcessorNode | null>(null);
+  const workletNodeRef = useRef<AudioWorkletNode | null>(null);
   const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const nextStartTimeRef = useRef<number>(0);
   const sessionPromiseRef = useRef<Promise<any> | null>(null);
@@ -39,9 +88,9 @@ export const useGeminiLive = () => {
   const recordedAudioBlobRef = useRef<Blob | null>(null);
 
   const cleanupAudio = useCallback(() => {
-    if (processorRef.current) {
-      processorRef.current.disconnect();
-      processorRef.current = null;
+    if (workletNodeRef.current) {
+      workletNodeRef.current.disconnect();
+      workletNodeRef.current = null;
     }
     if (sourceRef.current) {
       sourceRef.current.disconnect();
@@ -50,10 +99,6 @@ export const useGeminiLive = () => {
     if (streamRef.current) {
       streamRef.current.getTracks().forEach(track => track.stop());
       streamRef.current = null;
-    }
-    if (inputContextRef.current) {
-      inputContextRef.current.close();
-      inputContextRef.current = null;
     }
     if (audioContextRef.current) {
       audioContextRef.current.close();
@@ -67,7 +112,10 @@ export const useGeminiLive = () => {
   }, []);
 
   const connect = useCallback(async (voiceName: VoiceName = 'Kore') => {
+    cleanupAudio(); // Ensure clean state before connecting
+
     try {
+      console.log("Connecting with voice:", voiceName);
       setAppState(AppState.CONNECTING);
       setTranscripts([]); // Clear previous transcripts
       audioChunksRef.current = []; // Clear previous audio
@@ -80,13 +128,16 @@ export const useGeminiLive = () => {
 
       const ai = new GoogleGenAI({ apiKey });
 
-      // Initialize Audio Contexts
-      // Main Context for Output & Mixing (24kHz is standard output rate)
-      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
+      // Initialize Audio Context
+      // Use default sample rate (usually 44.1k or 48k) for better compatibility
+      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
       audioContextRef.current = ctx;
 
-      // Separate Input Context for 16kHz processing (required by Gemini Input)
-      inputContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
+      // Load AudioWorklet
+      const blob = new Blob([WORKLET_CODE], { type: 'application/javascript' });
+      const workletUrl = URL.createObjectURL(blob);
+      await ctx.audioWorklet.addModule(workletUrl);
+      URL.revokeObjectURL(workletUrl);
 
       // Get User Media
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -146,37 +197,29 @@ export const useGeminiLive = () => {
               await audioContextRef.current.resume();
             }
 
-            if (!inputContextRef.current || !streamRef.current) return;
+            if (!streamRef.current || !audioContextRef.current) return;
 
-            // Process Mic Stream for Gemini Input (16kHz)
-            const source = inputContextRef.current.createMediaStreamSource(streamRef.current);
-            const processor = inputContextRef.current.createScriptProcessor(4096, 1, 1);
+            // Process Mic Stream for Gemini Input (using AudioWorklet)
+            const source = audioContextRef.current.createMediaStreamSource(streamRef.current);
+            const workletNode = new AudioWorkletNode(audioContextRef.current, 'audio-processor');
 
             sourceRef.current = source;
-            processorRef.current = processor;
+            workletNodeRef.current = workletNode;
 
-            processor.onaudioprocess = (e) => {
-              const inputData = e.inputBuffer.getChannelData(0);
+            workletNode.port.onmessage = (e) => {
+              const float32Data = e.data as Float32Array;
 
               // Volume meter
               let sum = 0;
-              for (let i = 0; i < inputData.length; i++) {
-                sum += inputData[i] * inputData[i];
+              for (let i = 0; i < float32Data.length; i++) {
+                sum += float32Data[i] * float32Data[i];
               }
-              const rms = Math.sqrt(sum / inputData.length);
+              const rms = Math.sqrt(sum / float32Data.length);
               setVolumeLevel(rms);
 
-              // Resample
-              const currentSampleRate = inputContextRef.current?.sampleRate || 16000;
-              let pcmData: Int16Array;
-
-              if (currentSampleRate !== 16000) {
-                pcmData = resampleTo16kHZ(inputData, currentSampleRate);
-              } else {
-                pcmData = float32ToInt16(inputData);
-              }
-
-              const base64Data = bytesToBase64(new Uint8Array(pcmData.buffer));
+              // Convert to Int16
+              const int16Data = float32ToInt16(float32Data);
+              const base64Data = bytesToBase64(new Uint8Array(int16Data.buffer));
 
               sessionPromiseRef.current?.then(session => {
                 session.sendRealtimeInput({
@@ -188,8 +231,9 @@ export const useGeminiLive = () => {
               });
             };
 
-            source.connect(processor);
-            processor.connect(inputContextRef.current.destination);
+            source.connect(workletNode);
+            // Worklet doesn't need to connect to destination unless we want self-monitoring (we don't)
+            // workletNode.connect(audioContextRef.current.destination);
           },
           onmessage: async (msg: LiveServerMessage) => {
             // 1. 处理转录文本（先收集，稍后同步显示）
@@ -200,11 +244,9 @@ export const useGeminiLive = () => {
 
             const inputTranscript = msg.serverContent?.inputTranscription?.text;
             if (inputTranscript) {
-              // 只有在没有 AI 输出时才更新用户输入
-              if (!currentOutputTranscriptRef.current) {
-                currentInputTranscriptRef.current += inputTranscript;
-                updateTranscript('user', currentInputTranscriptRef.current, true);
-              }
+              // Always update user input to show responsiveness
+              currentInputTranscriptRef.current += inputTranscript;
+              updateTranscript('user', currentInputTranscriptRef.current, true);
             }
 
             // 2. 处理音频输出（音频播放时同步显示文本）
@@ -257,6 +299,7 @@ export const useGeminiLive = () => {
 
             // 3. Turn Complete
             if (msg.serverContent?.turnComplete) {
+              console.log("Turn Complete");
               if (currentOutputTranscriptRef.current) {
                 updateTranscript('model', currentOutputTranscriptRef.current, false);
                 currentOutputTranscriptRef.current = '';
@@ -308,6 +351,7 @@ export const useGeminiLive = () => {
 
       // 如果最后一条是同角色且是部分消息，更新它
       if (last && last.role === role && last.isPartial) {
+        if (last.text === text && last.isPartial === isPartial) return prev;
         const updated = { ...last, text, isPartial };
         return [...prev.slice(0, -1), updated];
       }

@@ -29,7 +29,7 @@ export async function decodeAudioData(
   // Ensure we have an even number of bytes for 16-bit PCM
   const byteLength = data.byteLength - (data.byteLength % 2);
   const frameCount = byteLength / 2 / numChannels;
-  
+
   const buffer = ctx.createBuffer(numChannels, frameCount, sampleRate);
   const view = new DataView(data.buffer, data.byteOffset, byteLength);
 
@@ -75,20 +75,20 @@ export function resampleTo16kHZ(
   const ratio = origSampleRate / targetSampleRate;
   const newLength = Math.round(audioData.length / ratio);
   const result = new Int16Array(newLength);
-  
+
   for (let i = 0; i < newLength; i++) {
     const originalIndex = i * ratio;
     const index1 = Math.floor(originalIndex);
     const index2 = Math.min(Math.ceil(originalIndex), audioData.length - 1);
     const weight = originalIndex - index1;
-    
+
     // Linear interpolation
     const val = audioData[index1] * (1 - weight) + audioData[index2] * weight;
-    
+
     // Clamp and convert to Int16
     const clamped = Math.max(-1, Math.min(1, val));
     result[i] = clamped < 0 ? clamped * 0x8000 : clamped * 0x7FFF;
   }
-  
+
   return result;
 }
