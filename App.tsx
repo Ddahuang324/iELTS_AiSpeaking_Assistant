@@ -47,13 +47,12 @@ const App: React.FC = () => {
     if (appState === AppState.ACTIVE) {
       disconnect();
       setTimeout(() => {
-        connect(voice);
+        connect(voice, true);
       }, 500);
     }
   };
 
   const handleStart = () => {
-    connect(selectedVoice);
     setShowIntro(false);
   };
 
@@ -141,7 +140,7 @@ const App: React.FC = () => {
         appState={appState}
         difficultyMode={difficultyMode}
         setDifficultyMode={setDifficultyMode}
-        onStart={() => connect(selectedVoice)}
+        onStart={() => connect(selectedVoice, true)}
         onStop={disconnect}
         onAnalyze={handleAnalyze}
         isAnalyzing={isAnalyzing}

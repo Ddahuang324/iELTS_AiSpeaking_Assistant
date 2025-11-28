@@ -19,38 +19,56 @@ const WORKLET_CODE = `
 class AudioProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
-    // Use a fixed-size buffer to avoid garbage collection issues
     this.buffer = new Float32Array(4096);
     this.bufferIndex = 0;
     this.targetSampleRate = 16000;
     this.chunkSize = 1024; // ~64ms at 16kHz
+    this._ratioComputed = false;
+    this._ratio = 1;
   }
 
   process(inputs) {
     const input = inputs[0];
     if (!input || !input.length) return true;
     const channelData = input[0];
-    
-    // Access global sampleRate explicitly
+
     // @ts-ignore
     const currentSampleRate = sampleRate;
-    const ratio = currentSampleRate / this.targetSampleRate;
-    
+
+    // If sample rates match, just copy samples (fast path)
+    if (currentSampleRate === this.targetSampleRate) {
+      for (let i = 0; i < channelData.length; i++) {
+        if (this.bufferIndex < this.buffer.length) {
+          this.buffer[this.bufferIndex++] = channelData[i];
+        }
+        if (this.bufferIndex >= this.chunkSize) {
+          this.port.postMessage(this.buffer.slice(0, this.chunkSize));
+          this.bufferIndex = 0;
+        }
+      }
+      return true;
+    }
+
+    // Only compute ratio when necessary
+    if (!this._ratioComputed) {
+      this._ratio = currentSampleRate / this.targetSampleRate;
+      this._ratioComputed = true;
+    }
+
+    const ratio = this._ratio;
     const newLength = Math.floor(channelData.length / ratio);
-    
+
     for (let i = 0; i < newLength; i++) {
       const originalIndex = i * ratio;
       const index1 = Math.floor(originalIndex);
       const index2 = Math.min(Math.ceil(originalIndex), channelData.length - 1);
       const weight = originalIndex - index1;
       const val = channelData[index1] * (1 - weight) + channelData[index2] * weight;
-      
-      // Add to buffer
+
       if (this.bufferIndex < this.buffer.length) {
         this.buffer[this.bufferIndex++] = val;
       }
-      
-      // Send chunk when full
+
       if (this.bufferIndex >= this.chunkSize) {
         const chunk = this.buffer.slice(0, this.chunkSize);
         this.port.postMessage(chunk);
@@ -81,13 +99,35 @@ export const useGeminiLive = () => {
   const currentOutputTranscriptRef = useRef<string>('');
   const currentInputTranscriptRef = useRef<string>('');
 
+  // Throttle refs for volume updates and AI speaking flag
+  const lastVolumeUpdateRef = useRef<number>(0);
+  const isAiSpeakingRef = useRef<boolean>(false);
+
   // Audio Recording Refs (Mixed Stream)
   const recordingDestRef = useRef<MediaStreamAudioDestinationNode | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const recordedAudioBlobRef = useRef<Blob | null>(null);
 
+  // Track active AI audio sources for interruption
+  const audioSourcesRef = useRef<AudioBufferSourceNode[]>([]);
+
+  const stopAiAudio = useCallback(() => {
+    audioSourcesRef.current.forEach(source => {
+      try {
+        source.stop();
+      } catch (e) {
+        // Ignore errors if already stopped
+      }
+    });
+    audioSourcesRef.current = [];
+    nextStartTimeRef.current = 0; // Reset timing
+    isAiSpeakingRef.current = false;
+  }, []);
+
   const cleanupAudio = useCallback(() => {
+    stopAiAudio();
+
     if (workletNodeRef.current) {
       workletNodeRef.current.disconnect();
       workletNodeRef.current = null;
@@ -109,9 +149,15 @@ export const useGeminiLive = () => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop();
     }
-  }, []);
+  }, [stopAiAudio]);
 
-  const connect = useCallback(async (voiceName: VoiceName = 'Kore') => {
+  const connect = useCallback(async (voiceName: VoiceName = 'Kore', userInitiated: boolean = false) => {
+    // Prevent automatic (non-user-initiated) connections. Callers must pass `true`
+    // when the connection is triggered by a user gesture (e.g. button click).
+    if (!userInitiated) {
+      console.warn('connect() blocked: requires user interaction to start session');
+      return;
+    }
     cleanupAudio(); // Ensure clean state before connecting
 
     try {
@@ -129,15 +175,27 @@ export const useGeminiLive = () => {
       const ai = new GoogleGenAI({ apiKey });
 
       // Initialize Audio Context
-      // Use default sample rate (usually 44.1k or 48k) for better compatibility
-      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      // Try to request 16000Hz so worklet/resampling can be avoided when supported
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      let ctx: AudioContext;
+      try {
+        ctx = new (AudioContextClass as any)({ sampleRate: 16000 });
+      } catch (e) {
+        // Some browsers ignore sampleRate request; fallback to default constructor
+        ctx = new (AudioContextClass as any)();
+      }
       audioContextRef.current = ctx;
 
-      // Load AudioWorklet
-      const blob = new Blob([WORKLET_CODE], { type: 'application/javascript' });
-      const workletUrl = URL.createObjectURL(blob);
-      await ctx.audioWorklet.addModule(workletUrl);
-      URL.revokeObjectURL(workletUrl);
+      // Load AudioWorklet if available; otherwise we'll fall back to ScriptProcessor
+      const hasAudioWorklet = !!(ctx.audioWorklet && (ctx.audioWorklet as any).addModule);
+      if (hasAudioWorklet) {
+        const blob = new Blob([WORKLET_CODE], { type: 'application/javascript' });
+        const workletUrl = URL.createObjectURL(blob);
+        await ctx.audioWorklet.addModule(workletUrl);
+        URL.revokeObjectURL(workletUrl);
+      } else {
+        console.warn('AudioWorklet not supported in this environment. Falling back to ScriptProcessorNode.');
+      }
 
       // Get User Media
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -187,6 +245,11 @@ export const useGeminiLive = () => {
           systemInstruction: SYSTEM_INSTRUCTION,
           inputAudioTranscription: {},
           outputAudioTranscription: {},
+          // @ts-ignore - voiceActivityDetection might not be in the type definition yet
+          voiceActivityDetection: {
+            voiceActivityTimeoutMs: 2000, // Wait 2s before deciding speech ended
+            voiceActivityThreshold: 0.5,  // Sensitivity
+          },
         },
         callbacks: {
           onopen: async () => {
@@ -201,7 +264,38 @@ export const useGeminiLive = () => {
 
             // Process Mic Stream for Gemini Input (using AudioWorklet)
             const source = audioContextRef.current.createMediaStreamSource(streamRef.current);
-            const workletNode = new AudioWorkletNode(audioContextRef.current, 'audio-processor');
+
+            // Create worklet node if supported, otherwise create a ScriptProcessorNode fallback
+            let workletNode: AudioWorkletNode | any;
+            if (audioContextRef.current && (audioContextRef.current as any).audioWorklet && (audioContextRef.current as any).audioWorklet.addModule) {
+              workletNode = new AudioWorkletNode(audioContextRef.current, 'audio-processor');
+            } else {
+              // ScriptProcessorNode is deprecated but provides a usable fallback when AudioWorklet is unavailable
+              const bufferSize = 1024;
+              const sp = audioContextRef.current.createScriptProcessor(bufferSize, 1, 1);
+
+              // Create a minimal port-like interface so the rest of the code can use port.onmessage
+              (sp as any).port = {
+                onmessage: null as any,
+                postMessage: () => { }
+              };
+
+              sp.onaudioprocess = (ev: AudioProcessingEvent) => {
+                try {
+                  const input = ev.inputBuffer.getChannelData(0);
+                  // Copy the input to avoid it being a view on a changing buffer
+                  const copy = new Float32Array(input.length);
+                  copy.set(input);
+                  if ((sp as any).port.onmessage) {
+                    (sp as any).port.onmessage({ data: copy });
+                  }
+                } catch (e) {
+                  console.error('ScriptProcessor fallback error', e);
+                }
+              };
+
+              workletNode = sp as any;
+            }
 
             sourceRef.current = source;
             workletNodeRef.current = workletNode;
@@ -209,26 +303,45 @@ export const useGeminiLive = () => {
             workletNode.port.onmessage = (e) => {
               const float32Data = e.data as Float32Array;
 
-              // Volume meter
-              let sum = 0;
-              for (let i = 0; i < float32Data.length; i++) {
-                sum += float32Data[i] * float32Data[i];
+              // If AI is currently speaking, skip processing to avoid echo and blocking
+              if (isAiSpeakingRef.current) return;
+
+              // Throttle UI updates for volume (max ~10fps)
+              const now = Date.now();
+              if (now - lastVolumeUpdateRef.current > 100) {
+                let sum = 0;
+                // sample every 4th value to reduce CPU
+                for (let i = 0; i < float32Data.length; i += 4) {
+                  sum += float32Data[i] * float32Data[i];
+                }
+                const rms = Math.sqrt(sum / (float32Data.length / 4));
+                setVolumeLevel(rms);
+                lastVolumeUpdateRef.current = now;
               }
-              const rms = Math.sqrt(sum / float32Data.length);
-              setVolumeLevel(rms);
 
-              // Convert to Int16
-              const int16Data = float32ToInt16(float32Data);
-              const base64Data = bytesToBase64(new Uint8Array(int16Data.buffer));
+              // Convert and send audio chunk (this is heavier; throttling UI above reduces main-thread churn)
+              try {
+                const int16Data = float32ToInt16(float32Data);
+                const base64Data = bytesToBase64(new Uint8Array(int16Data.buffer));
 
-              sessionPromiseRef.current?.then(session => {
-                session.sendRealtimeInput({
-                  media: {
-                    mimeType: 'audio/pcm;rate=16000',
-                    data: base64Data
-                  }
-                });
-              });
+                if (sessionPromiseRef.current) {
+                  sessionPromiseRef.current.then(session => {
+                    try {
+                      session.sendRealtimeInput({
+                        media: {
+                          mimeType: 'audio/pcm;rate=16000',
+                          data: base64Data
+                        }
+                      });
+                      // console.debug('Audio chunk sent, bytes=', base64Data.length);
+                    } catch (err) {
+                      console.error('Failed to send audio chunk:', err);
+                    }
+                  }).catch(err => console.error('Session promise rejected:', err));
+                }
+              } catch (err) {
+                console.error('Audio processing error in onmessage:', err);
+              }
             };
 
             source.connect(workletNode);
@@ -244,6 +357,11 @@ export const useGeminiLive = () => {
 
             const inputTranscript = msg.serverContent?.inputTranscription?.text;
             if (inputTranscript) {
+              // User started speaking, interrupt AI if needed
+              if (audioSourcesRef.current.length > 0) {
+                stopAiAudio();
+              }
+
               // Always update user input to show responsiveness
               currentInputTranscriptRef.current += inputTranscript;
               updateTranscript('user', currentInputTranscriptRef.current, true);
@@ -263,14 +381,26 @@ export const useGeminiLive = () => {
               const ctx = audioContextRef.current;
               if (ctx.state === 'suspended') await ctx.resume();
 
+              // Reset timing if we are starting fresh or if time drifted significantly
               if (nextStartTimeRef.current < ctx.currentTime) {
                 nextStartTimeRef.current = ctx.currentTime;
               }
 
               try {
+                // Mark that AI is speaking to suppress mic processing temporarily
+                isAiSpeakingRef.current = true;
+
                 const buffer = await decodeAudioData(base64ToBytes(audioData), ctx, 24000);
                 const source = ctx.createBufferSource();
                 source.buffer = buffer;
+
+                // Track source for interruption
+                audioSourcesRef.current.push(source);
+                source.onended = () => {
+                  audioSourcesRef.current = audioSourcesRef.current.filter(s => s !== source);
+                  // If no more AI sources, clear speaking flag
+                  isAiSpeakingRef.current = audioSourcesRef.current.length > 0;
+                };
 
                 // Connect AI Audio to Speakers
                 source.connect(ctx.destination);
@@ -300,11 +430,11 @@ export const useGeminiLive = () => {
             // 3. Turn Complete
             if (msg.serverContent?.turnComplete) {
               console.log("Turn Complete");
+              // Force finalize transcripts
               if (currentOutputTranscriptRef.current) {
                 updateTranscript('model', currentOutputTranscriptRef.current, false);
                 currentOutputTranscriptRef.current = '';
               }
-              // 确保用户输入也被完成
               if (currentInputTranscriptRef.current) {
                 updateTranscript('user', currentInputTranscriptRef.current, false);
                 currentInputTranscriptRef.current = '';
@@ -329,7 +459,7 @@ export const useGeminiLive = () => {
       finalizeRecording();
       setAppState(AppState.ERROR);
     }
-  }, []);
+  }, [cleanupAudio, stopAiAudio]);
 
   const finalizeRecording = () => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
@@ -379,8 +509,12 @@ export const useGeminiLive = () => {
     currentOutputTranscriptRef.current = '';
     currentInputTranscriptRef.current = '';
 
+    // Stop audio and close contexts
     cleanupAudio();
+
+    // Finalize any pending recording and then clear buffers
     finalizeRecording();
+
     setAppState(AppState.ENDED);
   }, [cleanupAudio]);
 
@@ -408,3 +542,4 @@ export const useGeminiLive = () => {
     clearTranscripts
   };
 };
+
