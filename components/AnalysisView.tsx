@@ -1,6 +1,6 @@
 
 import React, { useState } from 'react';
-import { TranscriptItem, AnalysisResult, GrammarError, WordChoiceIssue, VocabularySuggestion } from '../types';
+import { TranscriptItem, AnalysisResult, GrammarError, WordChoiceIssue, VocabularySuggestion, QuestionAnswerPair, OptimizationSuggestion } from '../types';
 import { MOCK_SAMPLE_RESULT } from '../services/analysisService';
 
 interface AnalysisViewProps {
@@ -116,190 +116,221 @@ const AnalysisView: React.FC<AnalysisViewProps> = ({ transcripts, history, isAna
 
 // --- SUBCOMPONENTS ---
 
-const ReportContent: React.FC<{ result: AnalysisResult }> = ({ result }) => (
-   <div className="space-y-16 animate-float-in">
+const ReportContent: React.FC<{ result: AnalysisResult }> = ({ result }) => {
+   const [isVocabularyExpanded, setIsVocabularyExpanded] = useState(true);
+   const [isGrammarExpanded, setIsGrammarExpanded] = useState(true);
 
-      {/* 1. SCORE DASHBOARD */}
-      <section>
-         <SectionHeader icon="🏆" title="Overall Assessment" />
-         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="md:col-span-1 bg-charcoal text-white rounded-2xl p-6 flex flex-col justify-between aspect-square relative overflow-hidden group">
-               <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
-                  <svg width="100" height="100" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" /></svg>
-               </div>
-               <span className="text-xs uppercase tracking-widest opacity-60">IELTS Band</span>
-               <span className="text-6xl font-bold">{result.ielts_band_score.overall.score}</span>
-               <div className="w-full h-1 bg-white/20 rounded-full overflow-hidden">
-                  <div className="h-full bg-accent-gold" style={{ width: `${(result.ielts_band_score.overall.score / 9) * 100}%` }}></div>
-               </div>
-               <p className="text-[10px] text-gray-400 mt-2 line-clamp-2">{result.ielts_band_score.overall.rationale}</p>
-            </div>
+   return (
+      <div className="space-y-16 animate-float-in">
 
-            <ScoreCard title="Fluency & Coherence" score={result.ielts_band_score.fluency_and_coherence.score} rationale={result.ielts_band_score.fluency_and_coherence.rationale} color="text-blue-500" />
-            <ScoreCard title="Lexical Resource" score={result.ielts_band_score.lexical_resource.score} rationale={result.ielts_band_score.lexical_resource.rationale} color="text-green-500" />
-            <div className="flex flex-col gap-4 md:col-span-1">
-               <ScoreCardSmall title="Grammar" score={result.ielts_band_score.grammatical_range_and_accuracy.score} />
-               <ScoreCardSmall title="Pronunciation" score={result.ielts_band_score.pronunciation.score} />
-            </div>
-         </div>
-      </section>
-
-      {/* 2. OVERALL FEEDBACK */}
-      <section>
-         <SectionHeader icon="📝" title="Comprehensive Feedback" />
-         <div className="grid md:grid-cols-3 gap-6">
-            <FeedbackColumn title="Strengths" items={result.overall_feedback.strengths} color="bg-green-50 border-green-100 text-green-800" />
-            <FeedbackColumn title="Improvements" items={result.overall_feedback.areas_for_improvement} color="bg-orange-50 border-orange-100 text-orange-800" />
-            <FeedbackColumn title="Recommendations" items={result.overall_feedback.key_recommendations} color="bg-blue-50 border-blue-100 text-blue-800" />
-         </div>
-      </section>
-
-      {/* 3. FLUENCY & PRONUNCIATION */}
-      <section>
-         <SectionHeader icon="🌊" title="Fluency & Pronunciation" />
-         <div className="grid md:grid-cols-2 gap-8">
-            {/* Fluency */}
-            <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm">
-               <h4 className="text-sm font-bold uppercase tracking-widest text-charcoal mb-4">Fluency Analysis</h4>
-               <p className="text-sm text-gray-600 mb-6 italic">"{result.fluency_markers.analysis}"</p>
-
-               <div className="flex flex-wrap gap-2 mb-4">
-                  {result.fluency_markers.hesitation_markers.map((h, i) => (
-                     <div key={i} className="px-3 py-1 bg-red-50 text-red-600 rounded-full text-xs flex items-center gap-2 border border-red-100">
-                        <span className="font-serif italic">{h.marker}</span>
-                        <span className="font-bold bg-white px-1.5 rounded-full text-[10px]">{h.count}</span>
-                     </div>
-                  ))}
-               </div>
-               <div className="text-xs text-gray-400">
-                  Connectors used: <span className="text-charcoal">{result.fluency_markers.connectors_used.join(", ")}</span>
-               </div>
-            </div>
-
-            {/* Pronunciation */}
-            <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm">
-               <h4 className="text-sm font-bold uppercase tracking-widest text-charcoal mb-4">Pronunciation Analysis</h4>
-               <p className="text-sm text-gray-600 mb-6 italic">"{result.pronunciation_analysis.analysis}"</p>
-
-               {result.pronunciation_analysis.potential_patterns.length > 0 ? (
-                  <ul className="space-y-3">
-                     {result.pronunciation_analysis.potential_patterns.map((p, i) => (
-                        <li key={i} className="text-xs bg-gray-50 p-3 rounded-lg">
-                           <strong className="block text-charcoal mb-1">{p.suspected_issue}</strong>
-                           <span className="text-gray-500">Evidence: {p.evidence.join(", ")}</span>
-                        </li>
-                     ))}
-                  </ul>
-               ) : (
-                  <p className="text-xs text-gray-400">No specific pronunciation patterns detected.</p>
-               )}
-            </div>
-         </div>
-      </section>
-
-      {/* 4. NATIVE AUDIO ANALYSIS (NEW SECTION) */}
-      {result.native_audio_analysis && (
+         {/* 1. SCORE DASHBOARD */}
          <section>
-            <SectionHeader icon="🎙️" title="Native Audio Analysis" />
-            <div className="bg-gradient-to-br from-gray-900 to-gray-800 text-white rounded-2xl p-8 shadow-xl">
-               <div className="grid md:grid-cols-3 gap-8 mb-8">
-                  <AudioMetricCircle label="Intonation" score={result.native_audio_analysis.intonation.score} description={result.native_audio_analysis.intonation.analysis} />
-                  <AudioMetricCircle label="Tone" score={result.native_audio_analysis.tone.score} description={result.native_audio_analysis.tone.analysis} />
-                  <AudioMetricCircle label="Spoken Vocab" score={result.native_audio_analysis.spoken_vocabulary.score} description={result.native_audio_analysis.spoken_vocabulary.analysis} />
+            <SectionHeader icon="🏆" title="Overall Assessment" />
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+               <div className="md:col-span-1 bg-charcoal text-white rounded-2xl p-6 flex flex-col justify-between aspect-square relative overflow-hidden group">
+                  <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                     <svg width="100" height="100" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" /></svg>
+                  </div>
+                  <span className="text-xs uppercase tracking-widest opacity-60">IELTS Band</span>
+                  <span className="text-6xl font-bold">{result.ielts_band_score.overall.score}</span>
+                  <div className="w-full h-1 bg-white/20 rounded-full overflow-hidden">
+                     <div className="h-full bg-accent-gold" style={{ width: `${(result.ielts_band_score.overall.score / 9) * 100}%` }}></div>
+                  </div>
+                  <p className="text-[10px] text-gray-400 mt-2 line-clamp-2">{result.ielts_band_score.overall.rationale}</p>
                </div>
 
-               <div className="grid md:grid-cols-2 gap-8 border-t border-white/10 pt-8">
-                  <div>
-                     <h4 className="text-xs font-bold uppercase tracking-widest text-red-300 mb-4">Detected Audio Issues</h4>
-                     <ul className="space-y-4">
-                        {result.native_audio_analysis.detected_errors.map((err, i) => (
-                           <li key={i} className="bg-white/5 p-4 rounded-lg border border-white/10">
-                              <div className="flex justify-between items-start mb-1">
-                                 <span className="font-bold text-sm text-red-200">{err.error}</span>
-                              </div>
-                              <p className="text-xs text-gray-400 mb-2 italic">Context: {err.position_context}</p>
-                              <p className="text-xs text-green-300">Fix: {err.correction}</p>
-                           </li>
-                        ))}
-                     </ul>
-                  </div>
-                  <div>
-                     <h4 className="text-xs font-bold uppercase tracking-widest text-teal-300 mb-4">Optimization Directions</h4>
-                     <ul className="space-y-3">
-                        {result.native_audio_analysis.optimization_suggestions.map((sugg, i) => (
-                           <li key={i} className="flex gap-3 text-sm text-gray-300">
-                              <span className="text-teal-400">→</span>
-                              {sugg}
-                           </li>
-                        ))}
-                     </ul>
-                  </div>
+               <ScoreCard title="Fluency & Coherence" score={result.ielts_band_score.fluency_and_coherence.score} rationale={result.ielts_band_score.fluency_and_coherence.rationale} color="text-blue-500" />
+               <ScoreCard title="Lexical Resource" score={result.ielts_band_score.lexical_resource.score} rationale={result.ielts_band_score.lexical_resource.rationale} color="text-green-500" />
+               <div className="flex flex-col gap-4 md:col-span-1">
+                  <ScoreCardSmall title="Grammar" score={result.ielts_band_score.grammatical_range_and_accuracy.score} />
+                  <ScoreCardSmall title="Pronunciation" score={result.ielts_band_score.pronunciation.score} />
                </div>
             </div>
          </section>
-      )}
 
-      {/* 5. VOCABULARY ASSESSMENT */}
-      <section>
-         <SectionHeader icon="📖" title="Vocabulary Assessment" />
-
-         {/* Advanced Words */}
-         <div className="mb-8">
-            <h4 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Advanced Vocabulary Used</h4>
-            <div className="flex flex-wrap gap-2">
-               {result.vocabulary_assessment.advanced_words_found.map((word, i) => (
-                  <span key={i} className="px-3 py-1 bg-teal-50 text-teal-700 text-xs font-medium uppercase tracking-wider rounded-md border border-teal-100">
-                     {word}
-                  </span>
-               ))}
+         {/* 2. OVERALL FEEDBACK */}
+         <section>
+            <SectionHeader icon="📝" title="Comprehensive Feedback" />
+            <div className="flex flex-col gap-6">
+               <FeedbackColumn title="Strengths" items={result.overall_feedback.strengths} color="bg-green-50 border-green-100 text-green-800" />
+               <FeedbackColumn title="Improvements" items={result.overall_feedback.areas_for_improvement} color="bg-orange-50 border-orange-100 text-orange-800" />
+               <FeedbackColumn title="Recommendations" items={result.overall_feedback.key_recommendations} color="bg-blue-50 border-blue-100 text-blue-800" />
             </div>
-         </div>
+         </section>
 
-         {/* Word Choice Issues */}
-         <div className="grid grid-cols-1 gap-6 mb-8">
-            {result.word_choice_issues.map((issue, i) => (
-               <WordChoiceCard key={i} item={issue} />
-            ))}
-         </div>
+         {/* 3. FLUENCY & PRONUNCIATION */}
+         <section>
+            <SectionHeader icon="🌊" title="Fluency & Pronunciation" />
+            <div className="grid md:grid-cols-2 gap-8">
+               {/* Fluency */}
+               <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm">
+                  <h4 className="text-sm font-bold uppercase tracking-widest text-charcoal mb-4">Fluency Analysis</h4>
+                  <p className="text-sm text-gray-600 mb-6 italic">"{result.fluency_markers.analysis}"</p>
 
-         {/* Suggestions */}
-         {result.vocabulary_assessment.vocabulary_suggestions.length > 0 && (
-            <div className="bg-purple-50/50 rounded-2xl p-6 border border-purple-100">
-               <h4 className="text-xs font-bold uppercase tracking-widest text-purple-800 mb-4">Vocabulary Upgrades</h4>
-               <div className="grid gap-4">
-                  {result.vocabulary_assessment.vocabulary_suggestions.map((sugg, i) => (
-                     <div key={i} className="bg-white p-4 rounded-xl shadow-sm">
-                        <div className="flex items-center gap-2 mb-2">
-                           <span className="text-xs text-gray-400 uppercase">Overused:</span>
-                           <span className="text-sm font-bold text-charcoal line-through decoration-red-400">{sugg.overused_word}</span>
+                  <div className="flex flex-wrap gap-2 mb-4">
+                     {result.fluency_markers.hesitation_markers.map((h, i) => (
+                        <div key={i} className="px-3 py-1 bg-red-50 text-red-600 rounded-full text-xs flex items-center gap-2 border border-red-100">
+                           <span className="font-serif italic">{h.marker}</span>
+                           <span className="font-bold bg-white px-1.5 rounded-full text-[10px]">{h.count}</span>
                         </div>
-                        <p className="text-sm text-gray-600 mb-2 italic">"{sugg.original_sentence}"</p>
-                        <div className="flex flex-col gap-1">
-                           {sugg.suggested_rewrites.map((rewrite, j) => (
-                              <div key={j} className="flex items-start gap-2 text-sm text-purple-700">
-                                 <span>✨</span>
-                                 <span>{rewrite}</span>
+                     ))}
+                  </div>
+                  <div className="text-xs text-gray-400">
+                     Connectors used: <span className="text-charcoal">{result.fluency_markers.connectors_used.join(", ")}</span>
+                  </div>
+               </div>
+
+               {/* Pronunciation */}
+               <div className="bg-white border border-gray-100 rounded-2xl p-6 shadow-sm">
+                  <h4 className="text-sm font-bold uppercase tracking-widest text-charcoal mb-4">Pronunciation Analysis</h4>
+                  <p className="text-sm text-gray-600 mb-6 italic">"{result.pronunciation_analysis.analysis}"</p>
+
+                  {result.pronunciation_analysis.potential_patterns.length > 0 ? (
+                     <ul className="space-y-3">
+                        {result.pronunciation_analysis.potential_patterns.map((p, i) => (
+                           <li key={i} className="text-xs bg-gray-50 p-3 rounded-lg">
+                              <strong className="block text-charcoal mb-1">{p.suspected_issue}</strong>
+                              <span className="text-gray-500">Evidence: {p.evidence.join(", ")}</span>
+                           </li>
+                        ))}
+                     </ul>
+                  ) : (
+                     <p className="text-xs text-gray-400">No specific pronunciation patterns detected.</p>
+                  )}
+               </div>
+            </div>
+         </section>
+
+         {/* 4. NATIVE AUDIO ANALYSIS (NEW SECTION) */}
+         {result.native_audio_analysis && (
+            <section>
+               <SectionHeader icon="🎙️" title="Native Audio Analysis" />
+               <div className="bg-gradient-to-br from-gray-900 to-gray-800 text-white rounded-2xl p-8 shadow-xl">
+                  {/* 总体评分 */}
+                  <div className="grid md:grid-cols-3 gap-8 mb-8">
+                     <AudioMetricCircle
+                        label="Intonation"
+                        score={result.native_audio_analysis.overall_scores.intonation.score}
+                        description={result.native_audio_analysis.overall_scores.intonation.analysis}
+                     />
+                     <AudioMetricCircle
+                        label="Tone"
+                        score={result.native_audio_analysis.overall_scores.tone.score}
+                        description={result.native_audio_analysis.overall_scores.tone.analysis}
+                     />
+                     <AudioMetricCircle
+                        label="Spoken Vocab"
+                        score={result.native_audio_analysis.overall_scores.spoken_vocabulary.score}
+                        description={result.native_audio_analysis.overall_scores.spoken_vocabulary.analysis}
+                     />
+                  </div>
+
+                  {/* 优化建议 */}
+                  {result.native_audio_analysis.optimization_suggestions && result.native_audio_analysis.optimization_suggestions.length > 0 && (
+                     <div className="border-t border-white/10 pt-8">
+                        <h4 className="text-xs font-bold uppercase tracking-widest text-teal-300 mb-6">🎯 优化建议与练习方法</h4>
+                        <div className="space-y-4">
+                           {result.native_audio_analysis.optimization_suggestions.map((suggestion, i) => (
+                              <OptimizationSuggestionCard key={i} suggestion={suggestion} index={i} />
+                           ))}
+                        </div>
+                     </div>
+                  )}
+               </div>
+            </section>
+         )}
+
+         {/* 6. STANDARD RESPONSES */}
+         {result.standard_responses && result.standard_responses.length > 0 && (
+            <section>
+               <SectionHeader icon="💬" title="规范回答" />
+               <div className="space-y-6">
+                  {result.standard_responses.map((qa, i) => (
+                     <StandardResponseCard key={i} item={qa} index={i} />
+                  ))}
+               </div>
+            </section>
+         )}
+
+
+         {/* 5. VOCABULARY ASSESSMENT */}
+         <section>
+            <CollapsibleSectionHeader
+               icon="📖"
+               title="Vocabulary Assessment"
+               isExpanded={isVocabularyExpanded}
+               onToggle={() => setIsVocabularyExpanded(!isVocabularyExpanded)}
+            />
+
+            {isVocabularyExpanded && (
+               <>
+                  {/* Advanced Words */}
+                  <div className="mb-8">
+                     <h4 className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-3">Advanced Vocabulary Used</h4>
+                     <div className="flex flex-wrap gap-2">
+                        {result.vocabulary_assessment.advanced_words_found.map((word, i) => (
+                           <span key={i} className="px-3 py-1 bg-teal-50 text-teal-700 text-xs font-medium uppercase tracking-wider rounded-md border border-teal-100">
+                              {word}
+                           </span>
+                        ))}
+                     </div>
+                  </div>
+
+                  {/* Word Choice Issues */}
+                  <div className="grid grid-cols-1 gap-6 mb-8">
+                     {result.word_choice_issues.map((issue, i) => (
+                        <WordChoiceCard key={i} item={issue} />
+                     ))}
+                  </div>
+
+                  {/* Suggestions */}
+                  {result.vocabulary_assessment.vocabulary_suggestions.length > 0 && (
+                     <div className="bg-purple-50/50 rounded-2xl p-6 border border-purple-100">
+                        <h4 className="text-xs font-bold uppercase tracking-widest text-purple-800 mb-4">Vocabulary Upgrades</h4>
+                        <div className="grid gap-4">
+                           {result.vocabulary_assessment.vocabulary_suggestions.map((sugg, i) => (
+                              <div key={i} className="bg-white p-4 rounded-xl shadow-sm">
+                                 <div className="flex items-center gap-2 mb-2">
+                                    <span className="text-xs text-gray-400 uppercase">Overused:</span>
+                                    <span className="text-sm font-bold text-charcoal line-through decoration-red-400">{sugg.overused_word}</span>
+                                 </div>
+                                 <p className="text-sm text-gray-600 mb-2 italic">"{sugg.original_sentence}"</p>
+                                 <div className="flex flex-col gap-1">
+                                    {sugg.suggested_rewrites.map((rewrite, j) => (
+                                       <div key={j} className="flex items-start gap-2 text-sm text-purple-700">
+                                          <span>✨</span>
+                                          <span>{rewrite}</span>
+                                       </div>
+                                    ))}
+                                 </div>
                               </div>
                            ))}
                         </div>
                      </div>
+                  )}
+               </>
+            )}
+         </section>
+
+         {/* 5. GRAMMAR ERRORS */}
+         <section>
+            <CollapsibleSectionHeader
+               icon="⚠️"
+               title={`Grammar Errors (${result.grammar_errors.length})`}
+               isExpanded={isGrammarExpanded}
+               onToggle={() => setIsGrammarExpanded(!isGrammarExpanded)}
+            />
+            {isGrammarExpanded && (
+               <div className="grid grid-cols-1 gap-6">
+                  {result.grammar_errors.map((error, i) => (
+                     <GrammarErrorCard key={i} item={error} />
                   ))}
                </div>
-            </div>
-         )}
-      </section>
-
-      {/* 5. GRAMMAR ERRORS */}
-      <section>
-         <SectionHeader icon="⚠️" title={`Grammar Errors (${result.grammar_errors.length})`} />
-         <div className="grid grid-cols-1 gap-6">
-            {result.grammar_errors.map((error, i) => (
-               <GrammarErrorCard key={i} item={error} />
-            ))}
-         </div>
-      </section>
-   </div>
-);
+            )}
+         </section>
+      </div>
+   );
+};
 
 const HistoryCard: React.FC<{ item: AnalysisResult; onClick: () => void; onDelete?: () => void; isSample?: boolean }> = ({ item, onClick, onDelete, isSample }) => {
    const hesitationCount = item.fluency_markers.hesitation_markers.reduce((acc, curr) => acc + curr.count, 0);
@@ -377,6 +408,26 @@ const SectionHeader: React.FC<{ icon: string; title: string }> = ({ icon, title 
       <span className="opacity-60 grayscale">{icon}</span>
       {title}
    </h3>
+);
+
+const CollapsibleSectionHeader: React.FC<{ icon: string; title: string; isExpanded: boolean; onToggle: () => void }> = ({ icon, title, isExpanded, onToggle }) => (
+   <button
+      onClick={onToggle}
+      className="flex items-center justify-between w-full text-lg font-medium text-charcoal mb-6 hover:text-accent-teal transition-colors group cursor-pointer"
+   >
+      <div className="flex items-center gap-3">
+         <span className="opacity-60 grayscale group-hover:opacity-100 transition-opacity">{icon}</span>
+         <span>{title}</span>
+      </div>
+      <svg
+         className={`w-5 h-5 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`}
+         fill="none"
+         stroke="currentColor"
+         viewBox="0 0 24 24"
+      >
+         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+      </svg>
+   </button>
 );
 
 const ScoreCard: React.FC<{ title: string; score: number; rationale: string; color: string }> = ({ title, score, rationale, color }) => (
@@ -462,9 +513,84 @@ const GrammarErrorCard: React.FC<{ item: GrammarError }> = ({ item }) => (
    </div>
 );
 
+const OptimizationSuggestionCard: React.FC<{ suggestion: OptimizationSuggestion; index: number }> = ({ suggestion, index }) => (
+   <div className="bg-white/5 rounded-xl p-6 border border-white/10 hover:border-white/20 transition-all">
+      {/* 类别标签 */}
+      <div className="flex items-center gap-3 mb-4">
+         <span className="text-xs font-bold uppercase tracking-widest px-3 py-1 rounded-full bg-teal-500/20 text-teal-300 border border-teal-500/30">
+            {suggestion.category}
+         </span>
+      </div>
+
+      {/* 具体问题 */}
+      <div className="mb-4">
+         <h5 className="text-xs font-bold text-red-300 uppercase mb-2">🎯 具体问题</h5>
+         <p className="text-sm text-white leading-relaxed">{suggestion.specific_issue}</p>
+      </div>
+
+      {/* 可操作步骤 */}
+      <div className="mb-4">
+         <h5 className="text-xs font-bold text-blue-300 uppercase mb-3">💡 改进步骤</h5>
+         <ol className="space-y-2">
+            {suggestion.actionable_steps.map((step, i) => (
+               <li key={i} className="flex gap-3 text-sm text-gray-300">
+                  <span className="flex-shrink-0 w-5 h-5 rounded-full bg-blue-500/20 text-blue-300 flex items-center justify-center text-xs font-bold">
+                     {i + 1}
+                  </span>
+                  <span className="flex-1">{step}</span>
+               </li>
+            ))}
+         </ol>
+      </div>
+
+      {/* 示例 */}
+      {suggestion.example && (
+         <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-4">
+            <h5 className="text-xs font-bold text-green-300 uppercase mb-2">✨ 练习示例</h5>
+            <p className="text-sm text-green-100 leading-relaxed">{suggestion.example}</p>
+         </div>
+      )}
+   </div>
+);
+
 export default AnalysisView;
 
+
+const StandardResponseCard: React.FC<{ item: QuestionAnswerPair; index: number }> = ({ item, index }) => (
+   <div className="bg-gradient-to-br from-blue-50 to-purple-50 rounded-2xl p-6 border border-blue-100">
+      <h4 className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-4">
+         问答 #{index + 1}
+      </h4>
+
+      {/* 考官问题 - 左侧气泡 */}
+      <div className="flex justify-start mb-4">
+         <div className="bg-white rounded-2xl rounded-tl-none p-4 shadow-sm max-w-[80%] border border-gray-200">
+            <p className="text-xs text-gray-400 uppercase mb-1">Examiner</p>
+            <p className="text-sm text-charcoal font-medium">{item.examiner_question}</p>
+         </div>
+      </div>
+
+      {/* 考生回答要点 - 右侧气泡 */}
+      <div className="flex justify-end mb-4">
+         <div className="bg-blue-500 text-white rounded-2xl rounded-tr-none p-4 shadow-sm max-w-[80%]">
+            <p className="text-xs opacity-80 uppercase mb-1">你的回答要点</p>
+            <p className="text-sm">{item.candidate_answer_outline}</p>
+         </div>
+      </div>
+
+      {/* 标准回答 - 高亮展示 */}
+      <div className="bg-gradient-to-r from-green-500 to-teal-500 text-white rounded-2xl p-6 shadow-lg">
+         <div className="flex items-center gap-2 mb-3">
+            <span className="text-xl">✨</span>
+            <p className="text-xs font-bold uppercase tracking-widest">标准高分回答</p>
+         </div>
+         <p className="text-base leading-relaxed font-medium">{item.standard_response}</p>
+      </div>
+   </div>
+);
+
 const AudioMetricCircle: React.FC<{ label: string; score: number; description: string }> = ({ label, score, description }) => (
+
    <div className="flex flex-col items-center text-center">
       <div className="relative w-24 h-24 mb-4 flex items-center justify-center">
          <svg className="absolute inset-0 w-full h-full transform -rotate-90" viewBox="0 0 100 100">

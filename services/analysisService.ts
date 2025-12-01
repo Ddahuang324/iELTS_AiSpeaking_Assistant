@@ -65,31 +65,65 @@ export const MOCK_SAMPLE_RESULT: AnalysisResult = {
     ]
   },
   native_audio_analysis: {
-    intonation: {
-      score: 65,
-      analysis: "语调较为平淡，缺乏抑扬顿挫，特别是在陈述句结尾处。"
-    },
-    tone: {
-      score: 70,
-      analysis: "语气总体友好，但有时显得不够自信，缺乏情感投入。"
-    },
-    spoken_vocabulary: {
-      score: 60,
-      analysis: "口语词汇使用一般，部分单词重音位置不准确，影响了表达的清晰度。"
-    },
-    detected_errors: [
-      {
-        error: "语调下降过快",
-        position_context: "在回答关于家庭的问题时",
-        correction: "尝试在句尾保持语调平稳或略微上扬，以表示话题未结束。"
+    overall_scores: {
+      intonation: {
+        score: 65,
+        analysis: "语调较为平淡，缺乏抑扬顿挫，特别是在陈述句结尾处。"
+      },
+      tone: {
+        score: 70,
+        analysis: "语气总体友好，但有时显得不够自信，缺乏情感投入。"
+      },
+      spoken_vocabulary: {
+        score: 60,
+        analysis: "口语词汇使用一般，部分单词重音位置不准确，影响了表达的清晰度。"
       }
-    ],
+    },
     optimization_suggestions: [
-      "模仿英语母语者的语调变化，特别是强调句中的关键词。",
-      "练习使用不同的语气来表达不同的情感，如兴奋、遗憾等。",
-      "注意单词的重音，避免平铺直叙。"
+      {
+        category: "语调练习",
+        specific_issue: "陈述句结尾语调下降过快,听起来不够自然",
+        actionable_steps: [
+          "练习在句尾保持语调平稳2-3秒,避免突然下降",
+          "录音对比自己和母语者的语调曲线",
+          "每天朗读5个陈述句,注意控制结尾语调"
+        ],
+        example: "尝试朗读: 'I go to school every day.' 在'day'处保持语调平稳,不要突然下降"
+      },
+      {
+        category: "重音训练",
+        specific_issue: "多音节单词的重音位置经常出错,如'important'、'beautiful'等",
+        actionable_steps: [
+          "使用在线词典查看每个生词的音标和重音标记",
+          "练习常见多音节词汇,标注重音位置",
+          "跟读练习,模仿母语者的重音模式"
+        ],
+        example: "正确重音: im'portant (第二音节), 'beautiful (第一音节)"
+      },
+      {
+        category: "情感表达",
+        specific_issue: "语气过于平淡,缺乏情感色彩,不能有效传达态度",
+        actionable_steps: [
+          "练习用不同语气表达同一句话(兴奋、遗憾、惊讶)",
+          "观看英语影视作品,注意角色的情感表达方式",
+          "在关键词上加强语气,如表达喜好时在'love'、'enjoy'上加重"
+        ],
+        example: "对比练习: 平淡地说'I like it.'和热情地说'I really LOVE it!'"
+      }
     ]
-  }
+  },
+  standard_responses: [
+    {
+      examiner_question: "Can you tell me about your hometown?",
+      candidate_answer_outline: "考生提到家乡是一个小城市，有美丽的风景，人们很友好",
+      standard_response: "I come from a charming small city nestled in the countryside. What makes it particularly special is its breathtaking natural landscape, with rolling hills and pristine rivers. The community there is incredibly warm and welcoming, which creates a wonderful sense of belonging for residents and visitors alike."
+    },
+    {
+      examiner_question: "What do you like to do in your free time?",
+      candidate_answer_outline: "考生提到喜欢阅读和运动，特别是跑步",
+      standard_response: "In my leisure time, I am particularly passionate about reading and staying physically active. I find that running is an excellent way to maintain both my physical fitness and mental clarity. It gives me the opportunity to clear my mind while enjoying the outdoors, which I find incredibly refreshing."
+    }
+  ]
 };
 
 const ANALYSIS_SCHEMA = {
@@ -233,35 +267,52 @@ const ANALYSIS_SCHEMA = {
     native_audio_analysis: {
       type: Type.OBJECT,
       properties: {
-        intonation: {
+        overall_scores: {
           type: Type.OBJECT,
-          properties: { score: { type: Type.NUMBER }, analysis: { type: Type.STRING } }
+          properties: {
+            intonation: {
+              type: Type.OBJECT,
+              properties: { score: { type: Type.NUMBER }, analysis: { type: Type.STRING } }
+            },
+            tone: {
+              type: Type.OBJECT,
+              properties: { score: { type: Type.NUMBER }, analysis: { type: Type.STRING } }
+            },
+            spoken_vocabulary: {
+              type: Type.OBJECT,
+              properties: { score: { type: Type.NUMBER }, analysis: { type: Type.STRING } }
+            }
+          }
         },
-        tone: {
-          type: Type.OBJECT,
-          properties: { score: { type: Type.NUMBER }, analysis: { type: Type.STRING } }
-        },
-        spoken_vocabulary: {
-          type: Type.OBJECT,
-          properties: { score: { type: Type.NUMBER }, analysis: { type: Type.STRING } }
-        },
-        detected_errors: {
+        optimization_suggestions: {
           type: Type.ARRAY,
           items: {
             type: Type.OBJECT,
             properties: {
-              error: { type: Type.STRING },
-              position_context: { type: Type.STRING },
-              correction: { type: Type.STRING }
-            }
+              category: { type: Type.STRING },
+              specific_issue: { type: Type.STRING },
+              actionable_steps: { type: Type.ARRAY, items: { type: Type.STRING } },
+              example: { type: Type.STRING }
+            },
+            required: ["category", "specific_issue", "actionable_steps"]
           }
-        },
-        optimization_suggestions: { type: Type.ARRAY, items: { type: Type.STRING } }
+        }
       },
-      required: ["intonation", "tone", "spoken_vocabulary", "detected_errors", "optimization_suggestions"]
+      required: ["overall_scores", "optimization_suggestions"]
+    },
+    standard_responses: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          examiner_question: { type: Type.STRING },
+          candidate_answer_outline: { type: Type.STRING },
+          standard_response: { type: Type.STRING }
+        }
+      }
     }
   },
-  required: ["overall_feedback", "ielts_band_score", "grammar_errors", "word_choice_issues", "vocabulary_assessment", "fluency_markers", "pronunciation_analysis", "native_audio_analysis"]
+  required: ["overall_feedback", "ielts_band_score", "grammar_errors", "word_choice_issues", "vocabulary_assessment", "fluency_markers", "pronunciation_analysis", "native_audio_analysis", "standard_responses"]
 };
 
 // Helper to convert Blob to Base64
@@ -308,12 +359,37 @@ const SYSTEM_PROMPT = `
     - 基于文本提供一个总体评价，并承认其局限性。
     - **根据STT的可能错误，推断潜在的发音模式问题**（例如，混淆了哪些音）。
 8.  **原生音频分析 (Native Audio Analysis)**:
-    - **利用音频模型的能力**，深入分析用户的语调、语气和口语词汇使用。
-    - **语调 (Intonation)**: 评分（0-100）并分析语调的自然度、抑扬顿挫。
-    - **语气 (Tone)**: 评分（0-100）并分析语气的自信度、情感表达。
-    - **口语词汇 (Spoken Vocabulary)**: 评分（0-100）并分析单词重音、连读等口语特征。
-    - **检测到的错误 (Detected Errors)**: 指出具体的语调或发音错误，并提供发生的位置上下文（例如“在讨论...时”）。
-    - **优化建议 (Optimization Suggestions)**: 提供针对性的改进建议。
+    - **总体评分 (Overall Scores)**：
+      * 语调 (Intonation): 评分（0-100）并分析语调的自然度、抑扬顿挫
+      * 语气 (Tone): 评分（0-100）并分析语气的自信度、情感表达
+      * 口语词汇 (Spoken Vocabulary): 评分（0-100）并分析单词重音、连读等口语特征
+    
+    - **优化建议 (Optimization Suggestions)** - **这是最重要的部分**：
+      * 每条建议必须是一个结构化对象,包含以下字段:
+        - category (必填): 明确的类别标签,如"语调练习"、"重音训练"、"连读技巧"、"情感表达"、"节奏控制"
+        - specific_issue (必填): 具体问题描述,不要笼统
+          · ❌ 错误示例: "语调不够自然"
+          · ✅ 正确示例: "陈述句结尾语调下降过快,听起来生硬"
+        - actionable_steps (必填): 3-5个具体可操作的改进步骤数组
+          · 每个步骤必须清晰、具体、可执行
+          · ✅ 示例: "练习在句尾保持语调平稳2-3秒,避免突然下降"
+          · ✅ 示例: "录音对比自己和母语者的语调曲线"
+          · ✅ 示例: "每天朗读5个陈述句,注意控制结尾语调"
+        - example (可选): 具体的练习示例
+          · ✅ 示例: "尝试朗读: 'I go to school every day.' 在'day'处保持语调平稳"
+      * 建议数量: 提供3-5条建议,每条针对不同的具体问题
+      * 避免笼统描述,每条建议都要有明确的改进方向和练习方法
+
+9.  **规范回答 (Standard Responses)**:
+    - 从对话中识别考官（Examiner）提出的每一个问题。
+    - 总结考生（Candidate）针对每个问题的回答要点（中文）。
+    - 基于考生的回答内容和意图，生成一个标准的、高分的雅思口语回答（英文）。
+    - 标准回答应该：
+      * 保持考生原有的观点和内容方向
+      * 使用更高级的词汇和语法结构
+      * 展现更好的流利度和连贯性
+      * 符合雅思 7-8 分的标准
+      * 长度适中，不要过于冗长
 `;
 
 export const generateAnalysisReport = async (transcripts: TranscriptItem[], apiKey: string, audioBlob?: Blob | null): Promise<AnalysisResult | null> => {

@@ -17,10 +17,9 @@ export const getStoredHistory = (): AnalysisResult[] => {
         }
     }
 
-    // Ensure sample is always present
-    if (!loadedHistory.find(h => h.id === MOCK_SAMPLE_RESULT.id)) {
-        loadedHistory.push(MOCK_SAMPLE_RESULT);
-    }
+    // Remove old sample if exists and add the latest version
+    loadedHistory = loadedHistory.filter(h => h.id !== MOCK_SAMPLE_RESULT.id);
+    loadedHistory.push(MOCK_SAMPLE_RESULT);
 
     // Sort by date desc
     loadedHistory.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
